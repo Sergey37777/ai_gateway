@@ -1,6 +1,15 @@
 # syntax=docker/dockerfile:1
 # CTranslate2 (faster-whisper) требует CUDA 12 + cuDNN 9; torch не нужен.
 
+# ---------- web: сборка Web UI (Node есть только в этой стадии) ----------
+FROM node:26-slim AS web
+WORKDIR /web
+# слой зависимостей кэшируется, пока не меняются package.json/package-lock.json
+COPY web/package.json web/package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci
+COPY web/ ./
+RUN npm run build
+
 # ---------- builder: зависимости и пакет в /opt/venv ----------
 FROM nvidia/cuda:12.6.3-cudnn-runtime-ubuntu24.04 AS builder
 
@@ -42,10 +51,12 @@ RUN useradd -m app \
 
 COPY --from=builder /opt/venv /opt/venv
 COPY models.yaml /app/models.yaml
+COPY --from=web /web/dist /app/web
 
 ENV PATH=/opt/venv/bin:$PATH \
     HF_HOME=/home/app/.cache/huggingface \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    AIGW_WEB_DIR=/app/web
 
 WORKDIR /app
 USER app
