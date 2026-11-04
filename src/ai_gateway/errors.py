@@ -59,6 +59,20 @@ def database_unavailable() -> GatewayError:
     )
 
 
+def transcription_not_found(tid: object) -> GatewayError:
+    return GatewayError(404, "transcription_not_found", f"Распознавание '{tid}' не найдено")
+
+
+def invalid_state(message: str) -> GatewayError:
+    """409: действие не подходит к текущему статусу распознавания."""
+    return GatewayError(409, "invalid_state", message)
+
+
+def transcription_cancelled() -> GatewayError:
+    """409 клиенту синхронного запроса, если его распознавание отменили (из UI)."""
+    return GatewayError(409, "transcription_cancelled", "Распознавание отменено")
+
+
 def error_response(error: GatewayError) -> JSONResponse:
     """JSON-ответ с ошибкой в формате OpenAI."""
     return JSONResponse(error.to_body(), status_code=error.status_code, headers=error.headers)

@@ -55,8 +55,9 @@ src = ["src", "tests"]
 select = ["E", "F", "I", "UP", "B", "ASYNC", "ANN"]
 
 [tool.ruff.lint.per-file-ignores]
-# тесты не аннотируются (как и в mypy-override для tests.*)
-"tests/**" = ["ANN"]
+# тесты не аннотируются (как и в mypy-override для tests.*); ожидание состояния опросом
+# с таймаутом — нормальный приём в тестах фоновых задач
+"tests/**" = ["ANN", "ASYNC109", "ASYNC110"]
 
 [tool.mypy]
 python_version = "3.12"
