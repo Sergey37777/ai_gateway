@@ -52,6 +52,7 @@ select = ["E", "F", "I", "UP", "B", "ASYNC", "ANN"]
 python_version = "3.12"
 strict = true
 files = ["src", "tests"]
+mypy_path = "src"
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]

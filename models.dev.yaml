@@ -1,0 +1,13 @@
+# Реестр моделей для разработки на CPU (macOS): маленькие модели tiny и base.
+default_transcription: whisper-base
+aliases:
+  whisper-1: whisper-base
+models:
+  whisper-tiny:
+    backend: whisper
+    model: tiny
+    ttl: 120
+  whisper-base:
+    backend: whisper
+    model: base
+    ttl: 120

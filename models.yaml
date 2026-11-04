@@ -1,0 +1,15 @@
+# Реестр моделей для GPU (продакшн). Поля и значения по умолчанию — см. README.
+default_transcription: whisper-large-v3-turbo
+aliases:
+  whisper-1: whisper-large-v3-turbo
+models:
+  whisper-large-v3:
+    backend: whisper
+    model: large-v3
+    ttl: 600
+    max_concurrency: 1
+    vad_filter: true
+  whisper-large-v3-turbo:
+    backend: whisper
+    model: large-v3-turbo
+    ttl: 600
