@@ -7,10 +7,16 @@ services:
     env_file: .env
     environment:
       - AIGW_OLLAMA_URL=http://ollama:11434
+      - AIGW_DATABASE_URL=postgresql+psycopg://aigw:${POSTGRES_PASSWORD:-aigw}@postgres:5432/aigw
+      - AIGW_DATA_DIR=/data
     depends_on:
-      - ollama
+      ollama:
+        condition: service_started
+      postgres:
+        condition: service_healthy
     volumes:
       - hf-cache:/home/app/.cache/huggingface
+      - gateway-data:/data
       - ./models.yaml:/app/models.yaml:ro
     deploy:
       resources:
@@ -49,6 +55,25 @@ services:
               capabilities: [gpu]
     restart: unless-stopped
 
+  # История распознаваний и очередь задач. Порт наружу не публикуется, как у Ollama.
+  # Резервная копия: docker compose exec postgres pg_dump -U aigw aigw > backup.sql
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: aigw
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aigw}
+      POSTGRES_DB: aigw
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "aigw"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
 volumes:
   hf-cache:
   ollama-models:
+  gateway-data:
+  pgdata:

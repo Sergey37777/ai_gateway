@@ -18,6 +18,7 @@ from openai.types.chat import ChatCompletionMessageParam
 
 from ai_gateway.app import create_app
 from ai_gateway.config import Settings
+from tests.fakes import InMemoryTranscriptionStore
 
 pytestmark = pytest.mark.integration
 
@@ -30,8 +31,13 @@ OLLAMA_NAMES = {TEXT_MODEL: "qwen3:0.6b", VISION_MODEL: "qwen2.5vl:3b"}
 
 
 @pytest.fixture
-def settings() -> Settings:
-    return Settings(_env_file=None, device="cpu", models_file=REPO_ROOT / "models.dev.yaml")
+def settings(tmp_path: Path) -> Settings:
+    return Settings(
+        _env_file=None,
+        device="cpu",
+        models_file=REPO_ROOT / "models.dev.yaml",
+        data_dir=tmp_path / "data",
+    )
 
 
 @pytest.fixture
@@ -54,7 +60,8 @@ def require_model(settings: Settings) -> Callable[[str], None]:
 
 @pytest.fixture
 async def app(settings: Settings) -> AsyncIterator[FastAPI]:
-    application = create_app(settings)
+    # чату история распознаваний не нужна — PostgreSQL не требуется
+    application = create_app(settings, store=InMemoryTranscriptionStore())
     async with application.router.lifespan_context(application):
         yield application
 

@@ -6,7 +6,9 @@
 Этап 2 — чат с LLM через [Ollama](https://ollama.com) (`/v1/chat/completions`, SSE-стриминг,
 tool calling, картинки, рассуждения модели); память Ollama управляется её собственным `keep_alive`.
 Этап 3 — Web UI на `http://<host>:8000/`: распознавание файлов (аудио и видео, в том числе на
-гигабайты), записи с микрофона и чат с LLM.
+гигабайты), записи с микрофона и чат с LLM. Этап 4 — фоновые задачи и история распознаваний в
+PostgreSQL: длинную запись можно отправить и закрыть вкладку, расшифровка с аудио (Opus) и поиском
+останется в истории.
 
 ## Эндпоинты
 
@@ -18,17 +20,33 @@ tool calling, картинки, рассуждения модели); памят
 | `GET /health` | состояние сервиса и моделей, `"ollama": "ok" \| "unavailable"` (без авторизации) |
 | `GET /ui/config` | настройки для Web UI: лимит загрузки, модели с типом, языки, нужен ли ключ (без авторизации) |
 | `GET /` | Web UI (статика из `AIGW_WEB_DIR`, если каталог есть) |
+| `POST /api/transcriptions` | фоновое распознавание (multipart: `file`, `model`, `language`, `prompt`, `temperature`, `title`) → 202 |
+| `GET /api/transcriptions` | история: `q` (поиск по словоформам), `status`, `limit` (≤ 100), `before` (курсор `next`) |
+| `GET /api/transcriptions/{id}` | статус, `progress`, `queue_position`, ошибка |
+| `GET /api/transcriptions/{id}/result` | результат, `format=verbose_json` (по умолчанию) / `json` / `text` / `srt` / `vtt` |
+| `GET /api/transcriptions/{id}/audio` | аудио записи (Opus/WebM, поддерживает `Range`) |
+| `PATCH /api/transcriptions/{id}` | переименование: `{"title": "…"}` |
+| `POST /api/transcriptions/{id}/cancel` · `/retry` | отмена (в очереди или во время работы) · повтор упавшей |
+| `DELETE /api/transcriptions/{id}` | удаление записи вместе с аудио |
 
 `response_format`: `json` (по умолчанию), `text`, `verbose_json`, `srt`, `vtt`.
 `timestamp_granularities[]=word` добавляет `words` в `verbose_json`.
 Ошибки — в формате OpenAI: `{"error": {"message", "type", "param", "code"}}`;
-нехватка памяти или ошибка загрузки модели — `503 model_unavailable` с заголовком `Retry-After: 30`.
+нехватка памяти или ошибка загрузки модели — `503 model_unavailable` с заголовком `Retry-After: 30`;
+недоступна PostgreSQL — `503 database_unavailable` (`Retry-After: 5`).
+
+Каждое распознавание — и из UI, и через `/v1/audio/transcriptions` (OpenAI SDK) — сохраняется в
+историю (у вызовов SDK — пометка `source: "api"`, слова — только если их запросили). `/api/*` —
+собственный API шлюза, ключ `AIGW_API_KEY` нужен и для него. Фоновые задачи выполняются по одной;
+после перезапуска шлюза прерванная задача распознаётся заново.
 
 ## Запуск на Mac (разработка, CPU)
 
-Шлюз запускается вне Docker, Ollama — в Docker (Metal в контейнерах недоступен, модели работают на CPU).
+Шлюз запускается вне Docker, PostgreSQL и Ollama — в Docker (Metal в контейнерах недоступен,
+модели работают на CPU).
 
 ```bash
+docker compose -f compose.dev.yaml up -d   # PostgreSQL 17 на 127.0.0.1:55432 (миграции шлюз применит сам)
 uv sync
 cat > .env <<'EOF'
 AIGW_DEVICE=cpu
@@ -68,10 +86,14 @@ curl http://localhost:8000/v1/chat/completions -H 'Content-Type: application/jso
 Тесты и проверки:
 
 ```bash
-uv run pytest                    # юнит- и API-тесты, без моделей и GPU
-uv run pytest -m integration     # реальные whisper tiny/base на CPU и Ollama (если запущена) через OpenAI SDK
+uv run pytest                    # юнит- и API-тесты, без моделей, GPU и Docker
+uv run pytest -m postgres        # хранилище и миграции на настоящем PostgreSQL (testcontainers, postgres:17-alpine)
+uv run pytest -m integration     # реальные whisper tiny/base на CPU + PostgreSQL, Ollama (если запущена) через OpenAI SDK
 uv run ruff check . && uv run ruff format --check . && uv run mypy
 ```
+
+Миграции вручную (обычно не нужно — шлюз применяет их при старте): `uv run alembic upgrade head`.
+Загрузки и аудио истории лежат в `AIGW_DATA_DIR` (по умолчанию `data/`).
 
 ## Web UI
 
@@ -294,6 +316,12 @@ models:
 `AIGW_WEB_DIR` — каталог собранного Web UI (по умолчанию `web/dist`, в образе `/app/web`);
 нет каталога — UI не раздаётся, API работает как обычно.
 `TZ` (например, `Europe/Moscow`) задаёт часовой пояс контейнера для времени в логах; без него — UTC.
+`AIGW_DATABASE_URL` — PostgreSQL (по умолчанию `postgresql+psycopg://aigw:aigw@localhost:55432/aigw`,
+это `compose.dev.yaml`; в compose задаётся сам, пароль — `POSTGRES_PASSWORD`), `AIGW_DATA_DIR` —
+загрузки и Opus-аудио истории (по умолчанию `data`, в образе — volume `/data`).
+
+Резервная копия истории: `docker compose exec postgres pg_dump -U aigw aigw > backup.sql`
+(аудио — в volume `gateway-data`).
 
 ## Чек-лист проверки на GPU
 
@@ -329,3 +357,15 @@ models:
 - [ ] Чат: стрим, «Стоп» (в логе шлюза `итог=client_disconnected`), «Размышления», картинка на
       vision-модели, правка сообщения и «Перегенерировать».
 - [ ] С `AIGW_API_KEY` в `.env` UI спрашивает ключ; с неверным ключом спрашивает снова.
+
+## Чек-лист приёмки истории (этап 4) на GPU
+
+- [ ] `git pull`, в `.env` добавлен `POSTGRES_PASSWORD`, `docker compose up -d --build`;
+      `curl.exe http://localhost:8000/health` — `"database": "ok"`.
+- [ ] Часовая запись из UI: после «Загрузка…» UI переходит в запись, идёт прогресс; вкладку можно
+      закрыть и открыть позже — запись в «Истории», по завершении есть текст, слова и плеер.
+- [ ] `docker compose restart gateway` во время распознавания — задача возвращается в очередь и
+      доводится до конца.
+- [ ] Поиск по истории находит запись по словоформе; переименование и удаление работают.
+- [ ] Вызов через OpenAI SDK появляется в истории с пометкой «API».
+- [ ] Пословные таймкоды на GPU: время распознавания часа аудио выросло не больше чем на ~30 %.

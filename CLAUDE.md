@@ -4,15 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Статус проекта
 
-`ai_gateway` — локальный роутер моделей с **OpenAI-совместимым API**. Этапы 1 (шлюз + Whisper)
-и 2 (Ollama + `/v1/chat/completions`) готовы; **этап 3** — Web UI на React в `web/`
-(распознавание файлов/видео/микрофона + чат). Спецификации этапов —
-`docs/superpowers/specs/2026-11-04-ai-gateway-stage{1,2,3}-design.md`; они источник истины по API,
-форматам ответов, кодам ошибок и тестам. Если код расходится со спецификацией — сначала уточнить
-у пользователя, а не молча менять одно под другое.
+`ai_gateway` — локальный роутер моделей с **OpenAI-совместимым API**. Этапы 1 (шлюз + Whisper),
+2 (Ollama + `/v1/chat/completions`) и 3 (Web UI на React в `web/`) готовы; пословные таймкоды в UI
+(3.1) и **этап 4** — фоновые задачи и история распознаваний в PostgreSQL. Спецификации —
+`docs/superpowers/specs/2026-11-04-ai-gateway-stage{1,2,3,4}-design.md` и
+`…-word-timestamps-design.md`; они источник истины по API, форматам ответов, кодам ошибок и тестам.
+Если код расходится со спецификацией — сначала уточнить у пользователя, а не молча менять одно
+под другое.
 
-Roadmap (решения по будущим этапам — `docs/roadmap.md`): этап 4 — фоновые задачи для длинного
-аудио; история чатов и распознаваний — позже. Не реализовывать функциональность следующих этапов без запроса.
+Roadmap (решения по будущим этапам — `docs/roadmap.md`): этап 5 — диалоги чата в истории;
+дальше — разметка спикеров. Не реализовывать функциональность следующих этапов без запроса.
 
 Документация, комментарии и сообщения коммитов — на русском.
 
@@ -40,7 +41,9 @@ uv sync
 uv run uvicorn ai_gateway.main:app --reload              # локальный запуск (CPU)
 uv run pytest                                            # юнит- и API-тесты (без моделей и GPU)
 uv run pytest tests/test_lifecycle.py::test_name         # один тест
-uv run pytest -m integration                             # реальный whisper `tiny` на CPU + OpenAI SDK
+uv run pytest -m postgres                                # хранилище/миграции на PostgreSQL (testcontainers)
+uv run pytest -m integration                             # реальный whisper `tiny` на CPU + PostgreSQL + OpenAI SDK
+docker compose -f compose.dev.yaml up -d                 # dev-PostgreSQL 17 на 127.0.0.1:55432 (для uvicorn и e2e)
 uv run ruff check . && uv run ruff format .
 uv run mypy                                              # strict, конфиг в pyproject.toml
 docker compose up --build                                # на целевой машине с GPU
@@ -75,6 +78,14 @@ npm run test:e2e             # Playwright: сборка + реальный шл�
   не блокировать.
 - **Ollama (этап 2)** — отдельный контейнер; её памятью управляет её `keep_alive`, шлюз
   не пытается учитывать VRAM между процессами.
+- **Этап 4 — задачи и история:** `jobs.py` (`TranscriptionService.execute()` — единый исполнитель:
+  фоновые задачи берёт `Worker` по одной FIFO, синхронный `/v1/audio/transcriptions` идёт сразу через
+  `run_sync` под `asyncio.shield`), `store.py` (протокол `TranscriptionStore` + SQLAlchemy 2.0 async /
+  psycopg 3; в тестах — `InMemoryTranscriptionStore`), `db/` (ORM, движок, миграции Alembic внутри
+  пакета — применяются при старте), `files.py` (`AIGW_DATA_DIR`: `uploads/`, `audio/`),
+  `backends/opus.py` (Opus/WebM для плеера). **Прогресс и флаг отмены — в памяти процесса**
+  (`RunState`), не в БД. Бэкенд распознавания получает `TranscriptionHooks` (ход и остановка между
+  сегментами). Собственный API — `/api/transcriptions…`, не `/v1/`.
 - **`errors.py`** — все ошибки отдаются в формате OpenAI `{"error": {message, type, param, code}}`
   через `GatewayError`; OOM/ошибка загрузки модели → 503 `model_unavailable` + `Retry-After`.
 - Конфигурация: env с префиксом `AIGW_` (`config.py`, pydantic-settings) + реестр моделей
@@ -99,7 +110,10 @@ npm run test:e2e             # Playwright: сборка + реальный шл�
 
 ## Важные ограничения
 
-- uvicorn запускается **строго с одним воркером** — каждый воркер грузил бы свою копию модели в VRAM.
+- uvicorn запускается **строго с одним воркером** — каждый воркер грузил бы свою копию модели в VRAM
+  (и воркер очереди, прогресс задач живут в этом же процессе).
+- PostgreSQL на Mac — только в контейнере (`postgres:17-alpine`, уже скачан); перед скачиванием
+  новых Docker-образов проверять `docker images`.
 - Docker-образ основан на `nvidia/cuda:12.x-cudnn-runtime-ubuntu24.04`: CTranslate2 требует
   CUDA 12 + cuDNN 9. torch в зависимостях не нужен.
 - Совместимость с OpenAI SDK — ключевое требование: интеграционный тест ходит через `AsyncOpenAI`.

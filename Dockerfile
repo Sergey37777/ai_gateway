@@ -44,10 +44,10 @@ RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends python3.12 tzdata \
     && rm -rf /var/lib/apt/lists/*
 
-# каталог кэша создаётся от app, чтобы volume hf-cache унаследовал владельца
+# каталоги кэша и данных создаются от app, чтобы volume'ы hf-cache и gateway-data унаследовали владельца
 RUN useradd -m app \
-    && mkdir -p /home/app/.cache/huggingface \
-    && chown -R app:app /home/app/.cache
+    && mkdir -p /home/app/.cache/huggingface /data \
+    && chown -R app:app /home/app/.cache /data
 
 COPY --from=builder /opt/venv /opt/venv
 COPY models.yaml /app/models.yaml
@@ -56,7 +56,8 @@ COPY --from=web /web/dist /app/web
 ENV PATH=/opt/venv/bin:$PATH \
     HF_HOME=/home/app/.cache/huggingface \
     PYTHONUNBUFFERED=1 \
-    AIGW_WEB_DIR=/app/web
+    AIGW_WEB_DIR=/app/web \
+    AIGW_DATA_DIR=/data
 
 WORKDIR /app
 USER app
