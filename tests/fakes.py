@@ -60,6 +60,7 @@ class FakeTranscriptionBackend:
         self.last_options: TranscriptionOptions | None = None
         self.last_audio_path: Path | None = None
         self._loaded = False
+        self.load_done = threading.Event()
 
     @property
     def loaded(self) -> bool:
@@ -72,6 +73,7 @@ class FakeTranscriptionBackend:
         if self.load_error is not None:
             raise self.load_error
         self._loaded = True
+        self.load_done.set()
 
     def unload(self) -> None:
         self.unload_calls += 1
@@ -83,3 +85,22 @@ class FakeTranscriptionBackend:
         if self.transcribe_error is not None:
             raise self.transcribe_error
         return self.result
+
+
+class FakeLoadableBackend:
+    """Бэкенд без transcribe (например, будущая чат-модель)."""
+
+    def __init__(self) -> None:
+        self.load_calls = 0
+        self._loaded = False
+
+    @property
+    def loaded(self) -> bool:
+        return self._loaded
+
+    def load(self) -> None:
+        self.load_calls += 1
+        self._loaded = True
+
+    def unload(self) -> None:
+        self._loaded = False

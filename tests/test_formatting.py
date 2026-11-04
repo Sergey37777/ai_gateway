@@ -83,6 +83,8 @@ async def test_verbose_json_without_words():
     assert len(body["segments"]) == 2
     assert set(body["segments"][0]) == {
         "id",
+        "seek",
+        "tokens",
         "start",
         "end",
         "text",

@@ -17,6 +17,27 @@ from ai_gateway.errors import GatewayError, model_unavailable
 from ai_gateway.registry import ModelSpec
 
 
+async def run_blocking[**P, T](func: Callable[P, T], /, *args: P.args, **kwargs: P.kwargs) -> T:
+    """`asyncio.to_thread`, который при отмене дожидается завершения потока.
+
+    Поток (инференс) прервать нельзя. Если отпустить вызывающего сразу, `acquire` освободит
+    семафор и слот, а с `ttl=0` — выгрузит модель, хотя поток ещё держит её в памяти:
+    следующий запрос загрузил бы вторую копию. Отмена пробрасывается после завершения потока.
+    """
+    future = asyncio.ensure_future(asyncio.to_thread(func, *args, **kwargs))
+    cancelled = False
+    while not future.done():
+        try:
+            await asyncio.wait({future})
+        except asyncio.CancelledError:
+            cancelled = True
+    if cancelled:
+        if not future.cancelled():
+            future.exception()  # результат потока уже не нужен; исключение забрано
+        raise asyncio.CancelledError
+    return future.result()
+
+
 @dataclass(frozen=True)
 class ModelStatus:
     """Состояние модели для `/health`; `idle_seconds=None`, если модель не загружена."""
@@ -66,6 +87,10 @@ class ModelManager:
             raise GatewayError(404, "model_not_found", f"Модель '{name}' не найдена", param="model")
         return slot
 
+    def backend(self, name: str) -> LoadableBackend:
+        """Бэкенд модели без загрузки весов — например, чтобы проверить его тип."""
+        return self._slot(name).backend
+
     @asynccontextmanager
     async def acquire(self, name: str) -> AsyncIterator[LoadableBackend]:
         """Загружает модель при необходимости и выдаёт бэкенд под семафором модели."""
@@ -113,12 +138,11 @@ class ModelManager:
 
     def _expired(self, slot: _Slot) -> bool:
         ttl = slot.spec.ttl
-        return (
-            slot.backend.loaded
-            and slot.active == 0
-            and ttl > 0
-            and self._clock() - slot.last_used > ttl
-        )
+        if not slot.backend.loaded or slot.active > 0 or ttl < 0:
+            return False
+        # ttl=0: обычно выгружается в acquire; сюда попадает модель, догрузившаяся
+        # уже после отмены запроса
+        return ttl == 0 or self._clock() - slot.last_used > ttl
 
     async def sweep(self) -> list[str]:
         """Выгружает модели, простаивающие дольше TTL; возвращает их имена."""
@@ -149,10 +173,17 @@ class ModelManager:
                 name=name,
                 loaded=slot.backend.loaded,
                 active=slot.active,
-                idle_seconds=now - slot.last_used if slot.backend.loaded else None,
+                idle_seconds=self._idle_seconds(slot, now),
             )
             for name, slot in self._slots.items()
         ]
+
+    @staticmethod
+    def _idle_seconds(slot: _Slot, now: float) -> float | None:
+        if not slot.backend.loaded:
+            return None
+        # пока идут запросы, модель не простаивает
+        return 0.0 if slot.active > 0 else now - slot.last_used
 
     async def shutdown(self) -> None:
         """Выгружает все модели при остановке сервиса."""

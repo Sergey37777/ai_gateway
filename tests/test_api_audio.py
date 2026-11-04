@@ -304,3 +304,55 @@ async def test_chunked_upload_stops_at_limit(make_client):
     assert _error(r)["code"] == "file_too_large"
     assert consumed <= 3 * 1024 * 1024
     assert client.backend.load_calls == 0
+
+
+async def test_non_transcription_model_rejected_before_load():
+    import copy
+
+    import httpx
+
+    from ai_gateway.app import create_app
+    from ai_gateway.config import Settings
+    from ai_gateway.lifecycle import ModelManager
+    from ai_gateway.registry import ModelRegistry
+    from tests.conftest import REGISTRY_DATA
+    from tests.fakes import FakeLoadableBackend
+
+    registry = ModelRegistry.from_dict(copy.deepcopy(REGISTRY_DATA), default_ttl=600)
+    backend = FakeLoadableBackend()
+    manager = ModelManager(registry.specs(), lambda _spec: backend)
+    app = create_app(Settings(_env_file=None, device="cpu"), registry=registry, manager=manager)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        r = await client.post(URL, files=FILES)
+    assert r.status_code == 400
+    assert _error(r)["param"] == "model"
+    assert backend.load_calls == 0
+
+
+async def test_upload_spool_released_before_transcription(make_client, monkeypatch):
+    # спул Starlette закрывается сразу после копирования, а не после распознавания:
+    # на диске не лежат две копии файла всё время инференса
+    from starlette.datastructures import UploadFile
+
+    events: list[str] = []
+    original_close = UploadFile.close
+
+    async def close(self):
+        events.append("close")
+        await original_close(self)
+
+    monkeypatch.setattr(UploadFile, "close", close)
+    backend = FakeTranscriptionBackend()
+    original = backend.transcribe
+
+    def spy(audio_path, options):
+        events.append("transcribe")
+        return original(audio_path, options)
+
+    backend.transcribe = spy  # type: ignore[method-assign]
+    client = await make_client(backend=backend)
+    r = await client.post(URL, files=FILES)
+    assert r.status_code == 200
+    assert events.index("close") < events.index("transcribe")

@@ -1,9 +1,11 @@
 import copy
-from collections.abc import AsyncIterator, Awaitable, Callable
+import sys
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from typing import Any, Protocol
 
 import httpx
 import pytest
+from loguru import logger
 
 from ai_gateway.app import create_app
 from ai_gateway.config import Settings
@@ -26,6 +28,15 @@ REGISTRY_DATA: dict[str, Any] = {
         "whisper-large-v3-turbo": {"backend": "whisper", "model": "large-v3-turbo", "ttl": 600},
     },
 }
+
+
+@pytest.fixture(autouse=True)
+def restore_logging() -> Iterator[None]:
+    # configure_logging (тесты lifespan/логов) меняет глобальный loguru: вернуть как было
+    yield
+    logger.remove()
+    logger.configure(extra={"request_id": "-"})
+    logger.add(sys.stderr)
 
 
 class GatewayClient(httpx.AsyncClient):

@@ -90,6 +90,8 @@ class WhisperBackend:
                 compression_ratio=float(s.compression_ratio),
                 no_speech_prob=float(s.no_speech_prob),
                 temperature=float(s.temperature or 0.0),
+                seek=int(s.seek),
+                tokens=[int(t) for t in s.tokens],
             )
             for s in raw
         ]

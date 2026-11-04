@@ -25,14 +25,13 @@ def get_manager(request: Request) -> ModelManager:
     return manager
 
 
-async def require_api_key(request: Request) -> None:
-    """Если `AIGW_API_KEY` задан — требует `Authorization: Bearer <key>`."""
-    expected = get_settings(request).api_key
-    if not expected:
-        return
-    header = request.headers.get("Authorization", "")
-    scheme, _, token = header.partition(" ")
-    if scheme.lower() != "bearer" or not secrets.compare_digest(
+def api_key_valid(authorization: str, expected: str) -> bool:
+    """Совпадает ли `Authorization: Bearer <key>` с ожидаемым ключом (за постоянное время)."""
+    scheme, _, token = authorization.partition(" ")
+    return scheme.lower() == "bearer" and secrets.compare_digest(
         token.strip().encode(), expected.encode()
-    ):
-        raise GatewayError(401, "invalid_api_key", "Неверный или отсутствующий API-ключ")
+    )
+
+
+def invalid_api_key() -> GatewayError:
+    return GatewayError(401, "invalid_api_key", "Неверный или отсутствующий API-ключ")

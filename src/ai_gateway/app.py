@@ -5,13 +5,14 @@ import contextlib
 import sys
 import uuid
 from collections.abc import AsyncIterator
+from typing import TextIO
 
-from fastapi import Depends, FastAPI
+from fastapi import FastAPI
 from loguru import logger
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from ai_gateway.api import audio, health, models
-from ai_gateway.api.deps import require_api_key
+from ai_gateway.api.deps import api_key_valid, invalid_api_key
 from ai_gateway.backends import build_backend
 from ai_gateway.config import (
     Settings,
@@ -31,12 +32,18 @@ LOG_FORMAT = (
 )
 
 
-def configure_logging(level: str) -> None:
-    """loguru в stderr; `request_id` по умолчанию — `-` (вне запроса)."""
+def configure_logging(level: str, *, sink: TextIO | None = None) -> None:
+    """loguru в `sink` (по умолчанию stderr); `request_id` вне запроса — `-`."""
     logger.remove()
     logger.configure(extra={"request_id": "-"})
     # diagnose=False: не печатать значения переменных в трейсбеках (ключи, содержимое запросов)
-    logger.add(sys.stderr, level=level.upper(), format=LOG_FORMAT, diagnose=False)
+    logger.add(
+        sink if sink is not None else sys.stderr,
+        level=level.upper(),
+        format=LOG_FORMAT,
+        diagnose=False,
+        colorize=False if sink is not None else None,
+    )
 
 
 class RequestContextMiddleware:
@@ -77,6 +84,26 @@ class RequestContextMiddleware:
                     raise
                 response = error_response(internal_error())
                 await response(scope, receive, send_with_id)
+
+
+class ApiKeyMiddleware:
+    """Проверяет `Authorization: Bearer <key>` для `/v1/*`, если ключ задан.
+
+    Именно middleware, а не зависимость FastAPI: зависимости выполняются после разбора
+    multipart, и клиент без ключа успевал бы записать файл на диск.
+    """
+
+    def __init__(self, app: ASGIApp, *, api_key: str | None) -> None:
+        self.app = app
+        self.api_key = api_key
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if self.api_key and scope["type"] == "http" and scope["path"].startswith("/v1/"):
+            authorization = dict(scope["headers"]).get(b"authorization", b"").decode("latin-1")
+            if not api_key_valid(authorization, self.api_key):
+                await error_response(invalid_api_key())(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
 
 
 class UploadSizeGuardMiddleware:
@@ -184,12 +211,13 @@ def create_app(
     app.state.device = "cpu" if settings.device == "auto" else settings.device
 
     install_error_handlers(app)
-    v1 = [Depends(require_api_key)]
-    app.include_router(audio.router, prefix="/v1", dependencies=v1)
-    app.include_router(models.router, prefix="/v1", dependencies=v1)
+    app.include_router(audio.router, prefix="/v1")
+    app.include_router(models.router, prefix="/v1")
     app.include_router(health.router)
 
-    # последний добавленный middleware — внешний: request id оборачивает всё, включая 413
+    # последний добавленный middleware — внешний: request id оборачивает всё (включая 401/413),
+    # ключ проверяется раньше, чем считается размер тела
     app.add_middleware(UploadSizeGuardMiddleware, max_upload_mb=settings.max_upload_mb)
+    app.add_middleware(ApiKeyMiddleware, api_key=settings.api_key)
     app.add_middleware(RequestContextMiddleware)
     return app

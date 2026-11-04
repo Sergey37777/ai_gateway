@@ -16,7 +16,7 @@ from ai_gateway.config import Settings
 from ai_gateway.errors import GatewayError, model_unavailable
 from ai_gateway.formatting import is_response_format, render
 from ai_gateway.languages import LANGUAGES
-from ai_gateway.lifecycle import ModelManager
+from ai_gateway.lifecycle import ModelManager, run_blocking
 from ai_gateway.registry import ModelRegistry
 
 router = APIRouter()
@@ -79,6 +79,10 @@ async def create_transcription(
     if language and language not in LANGUAGES:
         raise _bad_param("language", f"Неизвестный код языка '{language}'")
     spec = registry.resolve(model)
+    # до загрузки весов и чтения файла: не-речевая модель не должна попадать в VRAM
+    transcriber = manager.backend(spec.name)
+    if not isinstance(transcriber, TranscriptionBackend):
+        raise _bad_param("model", f"Модель '{spec.name}' не распознаёт речь")
 
     include_words = "word" in timestamp_granularities
     options = TranscriptionOptions(
@@ -91,14 +95,16 @@ async def create_transcription(
     with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename or "").suffix) as tmp:
         path = Path(tmp.name)
     try:
-        if await _save_upload(file, path, limit, settings.max_upload_mb) == 0:
+        size = await _save_upload(file, path, limit, settings.max_upload_mb)
+        # спул Starlette больше не нужен: не держать на диске вторую копию во время инференса
+        await file.close()
+        if size == 0:
             raise GatewayError(400, "invalid_audio", "Пустой аудиофайл", param="file")
-        async with manager.acquire(spec.name) as backend:
-            if not isinstance(backend, TranscriptionBackend):
-                raise _bad_param("model", f"Модель '{spec.name}' не распознаёт речь")
+        async with manager.acquire(spec.name):
             started = time.perf_counter()
             try:
-                result = await asyncio.to_thread(backend.transcribe, path, options)
+                # при отмене запроса слот держится, пока поток инференса не завершится
+                result = await run_blocking(transcriber.transcribe, path, options)
             except RuntimeError as exc:
                 if _is_gpu_oom(exc):
                     raise model_unavailable(f"Модели {spec.name} не хватило памяти: {exc}") from exc

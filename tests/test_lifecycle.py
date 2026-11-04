@@ -4,7 +4,7 @@ import threading
 import pytest
 
 from ai_gateway.errors import GatewayError
-from ai_gateway.lifecycle import ModelManager, ModelStatus
+from ai_gateway.lifecycle import ModelManager, ModelStatus, run_blocking
 from ai_gateway.registry import ModelSpec
 from tests.fakes import FakeClock, FakeTranscriptionBackend, spec
 
@@ -206,8 +206,73 @@ async def test_cancelled_during_load_releases_slot():
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
-    gate.set()
     assert manager.status()[0].active == 0
+
+    # следующий запрос дожидается уже идущей загрузки, а не начинает вторую
+    second = asyncio.create_task(use())
+    await asyncio.sleep(0.05)
+    gate.set()
+    await asyncio.wait_for(second, timeout=5)
+    assert backend.load_calls == 1
+    assert backend.loaded is True
+
+
+async def test_ttl_zero_cancelled_during_load_unloaded_by_sweep():
+    gate = threading.Event()
+    backend = FakeTranscriptionBackend(load_gate=gate)
+    manager, _, _ = make_manager(spec(ttl=0), backend=backend)
+
+    async def use() -> None:
+        async with manager.acquire("m"):
+            pass
+
+    task = asyncio.create_task(use())
+    await asyncio.sleep(0.05)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    gate.set()
+    assert await asyncio.to_thread(backend.load_done.wait, 5)
+    # загрузка завершилась уже после отмены: выгрузить модель некому, кроме sweep
+    assert await manager.sweep() == ["m"]
+    assert backend.loaded is False
+
+
+async def test_run_blocking_holds_slot_until_thread_finishes():
+    manager, _, _ = make_manager(spec(max_concurrency=1))
+    gate = threading.Event()
+    in_thread = threading.Event()
+
+    def blocking() -> str:
+        in_thread.set()
+        gate.wait(timeout=5)
+        return "done"
+
+    async def use() -> None:
+        async with manager.acquire("m"):
+            await run_blocking(blocking)
+
+    task = asyncio.create_task(use())
+    await asyncio.to_thread(in_thread.wait, 5)
+    task.cancel()
+    await _ticks()
+    # поток инференса не прервать: слот и семафор заняты, пока он работает
+    assert not task.done()
+    assert manager.status()[0].active == 1
+    gate.set()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(task, timeout=5)
+    assert manager.status()[0].active == 0
+
+
+async def test_run_blocking_returns_result_and_raises():
+    assert await run_blocking(lambda: 42) == 42
+
+    def boom() -> None:
+        raise ValueError("boom")
+
+    with pytest.raises(ValueError, match="boom"):
+        await run_blocking(boom)
 
 
 async def test_status_idle_seconds():
@@ -217,6 +282,17 @@ async def test_status_idle_seconds():
         pass
     clock.advance(15)
     assert manager.status()[0].idle_seconds == 15.0
+
+
+async def test_status_idle_zero_while_active():
+    manager, _, clock = make_manager()
+    clock.advance(100)
+    async with manager.acquire("m"):
+        assert manager.status()[0].idle_seconds == 0.0
+        clock.advance(5)
+        assert manager.status()[0].idle_seconds == 0.0
+    clock.advance(3)
+    assert manager.status()[0].idle_seconds == 3.0
 
 
 async def test_shutdown_unloads_all():

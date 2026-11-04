@@ -1,3 +1,5 @@
+from collections.abc import AsyncIterator
+
 from ai_gateway.app import create_app
 from ai_gateway.config import Settings
 from ai_gateway.lifecycle import ModelStatus
@@ -122,17 +124,45 @@ async def test_lifespan_builds_from_settings(tmp_path):
         assert app.state.registry.resolve(None).ttl == 600
 
 
-def test_logging_hides_local_values(capsys):
+def test_logging_hides_local_values():
+    import io
+
     from loguru import logger
 
     from ai_gateway.app import configure_logging
 
-    configure_logging("INFO")
+    sink = io.StringIO()
+    configure_logging("INFO", sink=sink)
     secret = "s3cr3t-value"
     try:
         raise ValueError(secret[:1])
     except ValueError:
         logger.exception("сбой")
-    err = capsys.readouterr().err
-    assert "сбой" in err
-    assert "s3cr3t-value" not in err
+    out = sink.getvalue()
+    assert "сбой" in out
+    assert "| - |" in out  # request_id по умолчанию вне запроса
+    assert "s3cr3t-value" not in out
+
+
+async def test_auth_checked_before_body_is_read(make_client):
+    # без ключа загрузка отклоняется до разбора multipart: тело не пишется на диск
+    client = await make_client(api_key="k")
+    consumed = 0
+
+    async def body() -> AsyncIterator[bytes]:
+        nonlocal consumed
+        yield b'--xyz\r\nContent-Disposition: form-data; name="file"; filename="a.wav"\r\n\r\n'
+        for _ in range(320):
+            consumed += 65536
+            yield b"x" * 65536
+        yield b"\r\n--xyz--\r\n"
+
+    r = await client.post(
+        "/v1/audio/transcriptions",
+        content=body(),
+        headers={"Content-Type": "multipart/form-data; boundary=xyz"},
+    )
+    assert r.status_code == 401
+    assert r.json()["error"]["code"] == "invalid_api_key"
+    assert consumed <= 65536
+    assert len(r.headers["X-Request-ID"]) == 32

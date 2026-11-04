@@ -20,11 +20,11 @@ def _word(word: str, start: float, end: float) -> SimpleNamespace:
 def _seg(id_: int, start: float, end: float, text: str, words: list[Any]) -> SimpleNamespace:
     return SimpleNamespace(
         id=id_,
-        seek=0,
+        seek=id_ * 100,
         start=start,
         end=end,
         text=text,
-        tokens=[],
+        tokens=[50364 + id_, 2425],
         avg_logprob=-0.3,
         compression_ratio=1.2,
         no_speech_prob=0.05,
@@ -102,6 +102,10 @@ def test_transcribe_maps_result():
     assert [s.id for s in result.segments] == [0, 1]
     assert result.segments[0].text == " Hello"
     assert result.segments[0].temperature == 0.0
+    assert [(s.seek, s.tokens) for s in result.segments] == [
+        (0, [50364, 2425]),
+        (100, [50365, 2425]),
+    ]
     assert result.words is None
 
 

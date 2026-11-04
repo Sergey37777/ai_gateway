@@ -1,6 +1,6 @@
 """Протоколы бэкендов и типы результата распознавания."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
@@ -26,6 +26,9 @@ class Segment:
     compression_ratio: float
     no_speech_prob: float
     temperature: float
+    # поля OpenAI TranscriptionSegment: смещение окна декодера и токены сегмента
+    seek: int = 0
+    tokens: list[int] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
