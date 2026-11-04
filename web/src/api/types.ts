@@ -29,11 +29,20 @@ export interface Segment {
   text: string;
 }
 
+/** Слово `verbose_json` с таймкодами (секунды); пробел перед словом — как отдал Whisper. */
+export interface Word {
+  word: string;
+  start: number;
+  end: number;
+}
+
 /** Результат распознавания; `raw` — тело ответа как есть (для скачивания json). */
 export interface Transcription {
   text: string;
   language: string;
   duration: number;
   segments: Segment[];
+  /** Пустой массив, если сервер слов не вернул. */
+  words: Word[];
   raw: string;
 }

@@ -77,7 +77,8 @@ test("поля формы, ключ и успешный ответ", async () =>
   expect(form?.get("model")).toBe("whisper-base");
   expect(form?.get("language")).toBe("ru");
   expect(form?.get("response_format")).toBe("verbose_json");
-  expect(form?.getAll("timestamp_granularities[]")).toEqual(["segment"]);
+  // слова нужны для подсветки и перемотки по словам
+  expect(form?.getAll("timestamp_granularities[]")).toEqual(["segment", "word"]);
   const sent = form?.get("file");
   expect(sent instanceof File ? sent.name : null).toBe("hello.wav");
   xhr.respond(200, VERBOSE);
@@ -86,6 +87,23 @@ test("поля формы, ключ и успешный ответ", async () =>
   expect(result.language).toBe("english");
   expect(result.segments).toEqual([{ id: 0, start: 0, end: 2, text: " Hello world." }]);
   expect(result.raw).toBe(VERBOSE);
+});
+
+test("слова разбираются, мусор отбрасывается", async () => {
+  const promise = transcribe(file, { model: "m", language: null }, {}, () => xhr);
+  const body = JSON.stringify({
+    text: "Привет",
+    segments: [],
+    words: [{ word: " Привет", start: 0, end: 0.5 }, { word: 1 }, null],
+  });
+  xhr.respond(200, body);
+  expect((await promise).words).toEqual([{ word: " Привет", start: 0, end: 0.5 }]);
+});
+
+test("нет поля words — пустой массив", async () => {
+  const promise = transcribe(file, { model: "m", language: null }, {}, () => xhr);
+  xhr.respond(200, VERBOSE);
+  expect((await promise).words).toEqual([]);
 });
 
 test("без языка и без ключа", () => {

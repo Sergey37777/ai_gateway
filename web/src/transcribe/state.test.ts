@@ -12,6 +12,7 @@ const RESULT: Transcription = {
   language: "english",
   duration: 1,
   segments: [],
+  words: [],
   raw: "{}",
 };
 const source = new File(["v"], "a.mp4", { type: "video/mp4" });

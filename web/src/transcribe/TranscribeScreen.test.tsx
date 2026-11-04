@@ -31,6 +31,7 @@ const RESULT: Transcription = {
     { id: 0, start: 0, end: 1.5, text: " Привет." },
     { id: 1, start: 1.5, end: 3, text: " Мир." },
   ],
+  words: [],
   raw: "{}",
 };
 
