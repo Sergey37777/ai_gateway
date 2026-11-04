@@ -255,3 +255,166 @@ label {
   gap: 8px;
   margin-top: 6px;
 }
+
+.small {
+  font-size: 13px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* распознавание */
+
+.dropzone {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 22px;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.dropzone p {
+  margin: 0;
+}
+
+.dropzone-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.dropzone-disabled {
+  opacity: 0.6;
+}
+
+.mic {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.mic-hint {
+  margin: 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.mic-error {
+  margin: 0;
+  color: var(--danger);
+}
+
+.rec-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #fff;
+  margin-right: 4px;
+  animation: blink 1s steps(2, start) infinite;
+}
+
+@keyframes blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+progress {
+  width: 100%;
+  height: 8px;
+  accent-color: var(--accent);
+}
+
+.result-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.result-head p {
+  margin: 2px 0 0;
+}
+
+.result-title {
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+
+.player {
+  width: 100%;
+}
+
+.player-video {
+  max-height: 60vh;
+  background: #000;
+  border-radius: 8px;
+}
+
+.downloads {
+  align-items: center;
+  gap: 8px;
+}
+
+.transcript-text {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.segments {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.segment {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  color: var(--fg);
+  border: none;
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-weight: 400;
+}
+
+button.segment:hover {
+  background: var(--surface-2);
+}
+
+.segment-active .segment {
+  background: var(--accent-soft);
+}
+
+.timestamp {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--accent);
+}

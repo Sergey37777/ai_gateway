@@ -6,6 +6,7 @@ import type { UiConfig } from "./api/types";
 import { ApiKeyDialog } from "./components/ApiKeyDialog";
 import { ErrorBanner } from "./components/ErrorBanner";
 import type { ScreenProps } from "./screen";
+import { TranscribeScreen } from "./transcribe/TranscribeScreen";
 
 type Tab = "transcribe" | "chat";
 
@@ -23,10 +24,7 @@ type ConfigState =
   | { status: "error"; message: string }
   | { status: "ready"; config: UiConfig };
 
-// временные заглушки — экраны появляются в следующих задачах плана
-function TranscribePlaceholder(_props: ScreenProps) {
-  return <p className="muted">Распознавание появится здесь.</p>;
-}
+// временная заглушка — экран чата появляется в следующей задаче плана
 function ChatPlaceholder(_props: ScreenProps) {
   return <p className="muted">Чат появится здесь.</p>;
 }
@@ -153,10 +151,7 @@ export function App() {
               aria-labelledby="tab-transcribe"
               hidden={tab !== "transcribe"}
             >
-              <TranscribePlaceholder
-                config={configState.config}
-                onDirtyChange={onTranscribeDirty}
-              />
+              <TranscribeScreen config={configState.config} onDirtyChange={onTranscribeDirty} />
             </section>
             <section
               role="tabpanel"

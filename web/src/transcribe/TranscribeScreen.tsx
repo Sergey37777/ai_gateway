@@ -1,0 +1,166 @@
+import { useEffect, useReducer, useRef, useState } from "react";
+import { userMessage, isAbortError } from "../api/errors";
+import { transcribe as defaultTranscribe } from "../api/transcribe";
+import { ErrorBanner } from "../components/ErrorBanner";
+import type { ScreenProps } from "../screen";
+import { extractAudio as defaultExtractAudio } from "./extractAudio";
+import { FilePicker } from "./FilePicker";
+import { MicRecorder } from "./MicRecorder";
+import { extractedTooLarge, planUpload } from "./plan";
+import { Progress } from "./Progress";
+import { initialTranscribeState, isBusy, transcribeReducer } from "./state";
+import { TranscriptView } from "./TranscriptView";
+
+interface Deps {
+  transcribe?: typeof defaultTranscribe;
+  extractAudio?: typeof defaultExtractAudio;
+}
+
+interface Props extends ScreenProps {
+  /** Подмена API в тестах. */
+  deps?: Deps;
+}
+
+export function TranscribeScreen({ config, onDirtyChange, deps }: Props) {
+  const transcribe = deps?.transcribe ?? defaultTranscribe;
+  const extractAudio = deps?.extractAudio ?? defaultExtractAudio;
+  const models = config.models.filter((m) => m.kind === "transcription");
+  const [model, setModel] = useState(config.default_transcription);
+  const [language, setLanguage] = useState("");
+  const [rejection, setRejection] = useState<string | null>(null);
+  const [state, dispatch] = useReducer(transcribeReducer, initialTranscribeState);
+  const nextOpId = useRef(1);
+  const controllerRef = useRef<AbortController | null>(null);
+  const busy = isBusy(state.phase);
+
+  useEffect(() => {
+    onDirtyChange(busy || state.phase.name === "done");
+  }, [busy, state.phase.name, onDirtyChange]);
+
+  useEffect(
+    () => () => {
+      controllerRef.current?.abort();
+    },
+    [],
+  );
+
+  const run = async (file: File) => {
+    const plan = planUpload(file, config.max_upload_mb);
+    if (plan.kind === "too_large") {
+      setRejection(plan.message);
+      return;
+    }
+    setRejection(null);
+    const opId = nextOpId.current++;
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    const { signal } = controller;
+    dispatch({ type: "start", opId, source: file, extract: plan.kind === "extract" });
+    try {
+      let upload = file;
+      if (plan.kind === "extract") {
+        upload = await extractAudio(file, {
+          signal,
+          onProgress: (progress) => {
+            dispatch({ type: "extractProgress", opId, progress });
+          },
+        });
+        const tooLarge = extractedTooLarge(upload.size, config.max_upload_mb);
+        if (tooLarge !== null) throw new Error(tooLarge);
+        dispatch({ type: "extracted", opId, file: upload });
+      }
+      const result = await transcribe(
+        upload,
+        { model, language: language === "" ? null : language },
+        {
+          signal,
+          onUploadProgress: (progress) => {
+            dispatch({ type: "uploadProgress", opId, progress });
+          },
+          onUploaded: () => {
+            dispatch({ type: "uploaded", opId, now: Date.now() });
+          },
+        },
+      );
+      dispatch({ type: "done", opId, result });
+    } catch (error) {
+      if (isAbortError(error)) return;
+      dispatch({ type: "fail", opId, message: userMessage(error) });
+    }
+  };
+
+  const onFile = (file: File) => {
+    void run(file);
+  };
+
+  const cancel = () => {
+    controllerRef.current?.abort();
+    controllerRef.current = null;
+    dispatch({ type: "cancel" });
+  };
+
+  if (state.phase.name === "done" && state.source !== null) {
+    return (
+      <TranscriptView
+        result={state.phase.result}
+        source={state.source}
+        onReset={() => {
+          dispatch({ type: "reset" });
+        }}
+      />
+    );
+  }
+
+  return (
+    <div className="stack">
+      <div className="card stack">
+        <div className="row">
+          <div className="field">
+            <label htmlFor="transcribe-model">Модель</label>
+            <select
+              id="transcribe-model"
+              value={model}
+              disabled={busy}
+              onChange={(event) => {
+                setModel(event.target.value);
+              }}
+            >
+              {models.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.id}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="transcribe-language">Язык</label>
+            <select
+              id="transcribe-language"
+              value={language}
+              disabled={busy}
+              onChange={(event) => {
+                setLanguage(event.target.value);
+              }}
+            >
+              <option value="">Автоопределение</option>
+              {config.languages.map((l) => (
+                <option key={l.code} value={l.code}>
+                  {l.code} — {l.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <FilePicker disabled={busy} onFile={onFile} />
+        <MicRecorder disabled={busy} onRecorded={onFile} />
+        <p className="muted small">
+          Лимит загрузки — {config.max_upload_mb} МБ. Из видео больше лимита браузер сам извлечёт
+          аудиодорожку и отправит только её.
+        </p>
+      </div>
+      {rejection !== null && <ErrorBanner message={rejection} />}
+      {state.phase.name === "error" && <ErrorBanner message={state.phase.message} />}
+      <Progress phase={state.phase} onCancel={cancel} />
+    </div>
+  );
+}
