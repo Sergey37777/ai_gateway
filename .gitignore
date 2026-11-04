@@ -17,3 +17,6 @@ LOGS/
 
 # локальная документация (спеки, планы) — не в git
 docs/
+
+# Web UI (каталог web/)
+web/node_modules/
