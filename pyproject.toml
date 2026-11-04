@@ -1,0 +1,63 @@
+[project]
+name = "ai-gateway"
+version = "0.1.0"
+description = "Локальный роутер моделей с OpenAI-совместимым API (Whisper и др.)"
+authors = [{ name = "Sergey Lyapin" }]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.162.0",
+    "faster-whisper>=1.2.1",
+    "loguru>=0.7.3",
+    "pydantic-settings>=2.16.2",
+    "python-multipart>=0.0.33",
+    "pyyaml>=6.0.3",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.5,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "mypy>=2.4.1",
+    "openai>=3.45.0",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.4.1.post1",
+    "ruff>=0.17.3",
+    "types-pyyaml>=6.0.12.20261103",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+addopts = "-m 'not integration'"
+markers = ["integration: реальная модель faster-whisper на CPU (медленно, качает веса)"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC", "ANN"]
+
+[tool.ruff.lint.per-file-ignores]
+# тесты не аннотируются (как и в mypy-override для tests.*)
+"tests/**" = ["ANN"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src", "tests"]
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["faster_whisper.*", "ctranslate2.*", "av.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
