@@ -250,9 +250,9 @@ async def test_temp_file_content_passed_to_backend(make_client):
     backend = FakeTranscriptionBackend()
     original = backend.transcribe
 
-    def spy(audio_path, options):
+    def spy(audio_path, options, hooks=None):
         seen.append(audio_path.read_bytes())
-        return original(audio_path, options)
+        return original(audio_path, options, hooks)
 
     backend.transcribe = spy  # type: ignore[method-assign]
     client = await make_client(backend=backend)
@@ -356,9 +356,9 @@ async def test_upload_spool_released_before_transcription(make_client, monkeypat
     backend = FakeTranscriptionBackend()
     original = backend.transcribe
 
-    def spy(audio_path, options):
+    def spy(audio_path, options, hooks=None):
         events.append("transcribe")
-        return original(audio_path, options)
+        return original(audio_path, options, hooks)
 
     backend.transcribe = spy  # type: ignore[method-assign]
     client = await make_client(backend=backend)

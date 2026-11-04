@@ -1,6 +1,6 @@
 """Протоколы бэкендов и типы результата распознавания."""
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -59,6 +59,18 @@ class TranscriptionResult:
     words: list[Word] | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class TranscriptionHooks:
+    """Связь с исполнителем: ход (доля 0..1) и запрос остановки; вызываются из потока инференса."""
+
+    on_progress: Callable[[float], None]
+    should_stop: Callable[[], bool]
+
+
+class TranscriptionCancelled(Exception):
+    """Распознавание остановлено по `should_stop` между сегментами."""
+
+
 class LoadableBackend(Protocol):
     """Бэкенд, веса которого шлюз загружает и выгружает сам."""
 
@@ -80,8 +92,13 @@ class LoadableBackend(Protocol):
 class TranscriptionBackend(LoadableBackend, Protocol):
     """Бэкенд распознавания речи."""
 
-    def transcribe(self, audio_path: Path, options: TranscriptionOptions) -> TranscriptionResult:
-        """Блокирующее распознавание файла."""
+    def transcribe(
+        self,
+        audio_path: Path,
+        options: TranscriptionOptions,
+        hooks: TranscriptionHooks | None = None,
+    ) -> TranscriptionResult:
+        """Блокирующее распознавание файла; `hooks` — ход и остановка между сегментами."""
         ...
 
 

@@ -7,7 +7,12 @@ import pytest
 
 from ai_gateway.backends import build_backend
 from ai_gateway.backends import whisper as whisper_module
-from ai_gateway.backends.base import TranscriptionBackend, TranscriptionOptions
+from ai_gateway.backends.base import (
+    TranscriptionBackend,
+    TranscriptionCancelled,
+    TranscriptionHooks,
+    TranscriptionOptions,
+)
 from ai_gateway.backends.whisper import WhisperBackend
 from ai_gateway.errors import GatewayError
 from tests.fakes import spec
@@ -41,6 +46,7 @@ class FakeWhisperModel:
         self.init_kwargs = kwargs
         self.transcribe_kwargs: dict[str, Any] = {}
         self.error: Exception | None = None
+        self.yielded = 0
         FakeWhisperModel.instances.append(self)
 
     def transcribe(self, audio: str, **kwargs: Any) -> tuple[Any, SimpleNamespace]:
@@ -52,7 +58,9 @@ class FakeWhisperModel:
             # ошибка декодирования у faster-whisper всплывает при итерации генератора
             if error is not None:
                 raise error
+            self.yielded += 1
             yield _seg(0, 0.0, 1.0, " Hello", [_word(" Hello", 0.0, 1.0)])
+            self.yielded += 1
             yield _seg(1, 1.0, 2.0, " world.", [_word(" world.", 1.0, 2.0)])
 
         return segments(), SimpleNamespace(language="en", duration=2.0)
@@ -165,3 +173,19 @@ def test_decode_error_is_invalid_audio(error):
     with pytest.raises(GatewayError) as e:
         backend.transcribe(Path("a.wav"), TranscriptionOptions())
     assert (e.value.status_code, e.value.code, e.value.param) == (400, "invalid_audio", "file")
+
+
+def test_progress_reported_per_segment(tmp_path):
+    progress: list[float] = []
+    hooks = TranscriptionHooks(on_progress=progress.append, should_stop=lambda: False)
+    _loaded().transcribe(tmp_path / "a.wav", TranscriptionOptions(), hooks)
+    assert progress == [0.5, 1.0]
+
+
+def test_should_stop_raises_between_segments(tmp_path):
+    hooks = TranscriptionHooks(on_progress=lambda _f: None, should_stop=lambda: True)
+    backend = _loaded()
+    with pytest.raises(TranscriptionCancelled):
+        backend.transcribe(tmp_path / "a.wav", TranscriptionOptions(), hooks)
+    # второй сегмент из генератора не читался — декодирование остановлено
+    assert FakeWhisperModel.instances[0].yielded == 1

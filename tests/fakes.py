@@ -11,7 +11,14 @@ from typing import Any
 
 import httpx
 
-from ai_gateway.backends.base import JsonObject, Segment, TranscriptionOptions, TranscriptionResult
+from ai_gateway.backends.base import (
+    JsonObject,
+    Segment,
+    TranscriptionCancelled,
+    TranscriptionHooks,
+    TranscriptionOptions,
+    TranscriptionResult,
+)
 from ai_gateway.errors import database_unavailable
 from ai_gateway.registry import WhisperSpec
 from ai_gateway.store import (
@@ -68,11 +75,18 @@ class FakeTranscriptionBackend:
         load_error: Exception | None = None,
         transcribe_error: Exception | None = None,
         load_gate: threading.Event | None = None,
+        transcribe_gate: threading.Event | None = None,
+        progress_steps: list[float] | None = None,
     ) -> None:
         self.result = result if result is not None else make_result()
         self.load_error = load_error
         self.transcribe_error = transcribe_error
         self.load_gate = load_gate
+        # transcribe ждёт gate (проверяя should_stop каждые 10 мс), до этого сообщив progress_steps
+        self.transcribe_gate = transcribe_gate
+        self.progress_steps = progress_steps or []
+        self.transcribe_calls = 0
+        self.transcribe_started = threading.Event()
         self.load_calls = 0
         self.unload_calls = 0
         self.last_options: TranscriptionOptions | None = None
@@ -97,9 +111,25 @@ class FakeTranscriptionBackend:
         self.unload_calls += 1
         self._loaded = False
 
-    def transcribe(self, audio_path: Path, options: TranscriptionOptions) -> TranscriptionResult:
+    def transcribe(
+        self,
+        audio_path: Path,
+        options: TranscriptionOptions,
+        hooks: TranscriptionHooks | None = None,
+    ) -> TranscriptionResult:
+        self.transcribe_calls += 1
         self.last_audio_path = audio_path
         self.last_options = options
+        self.transcribe_started.set()
+        if hooks is not None:
+            for step in self.progress_steps:
+                hooks.on_progress(step)
+        if self.transcribe_gate is not None:
+            while not self.transcribe_gate.wait(timeout=0.01):
+                if hooks is not None and hooks.should_stop():
+                    raise TranscriptionCancelled
+        if hooks is not None and hooks.should_stop():
+            raise TranscriptionCancelled
         if self.transcribe_error is not None:
             raise self.transcribe_error
         return self.result

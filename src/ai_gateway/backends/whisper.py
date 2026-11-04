@@ -13,6 +13,8 @@ from faster_whisper import WhisperModel
 
 from ai_gateway.backends.base import (
     Segment,
+    TranscriptionCancelled,
+    TranscriptionHooks,
     TranscriptionOptions,
     TranscriptionResult,
     Word,
@@ -60,7 +62,12 @@ class WhisperBackend:
         self._model = None
         gc.collect()
 
-    def transcribe(self, audio_path: Path, options: TranscriptionOptions) -> TranscriptionResult:
+    def transcribe(
+        self,
+        audio_path: Path,
+        options: TranscriptionOptions,
+        hooks: TranscriptionHooks | None = None,
+    ) -> TranscriptionResult:
         if self._model is None:
             raise RuntimeError("Модель не загружена")
         try:
@@ -72,8 +79,17 @@ class WhisperBackend:
                 word_timestamps=options.word_timestamps,
                 vad_filter=self._vad_filter,
             )
-            # генератор ленивый: декодирование и инференс идут при итерации
-            raw = list(raw_segments)
+            # генератор ленивый: декодирование и инференс идут при итерации — между
+            # сегментами сообщаем ход и проверяем запрос остановки
+            duration = float(info.duration)
+            raw: list[Any] = []
+            for segment in raw_segments:
+                raw.append(segment)
+                if hooks is not None:
+                    if duration > 0:
+                        hooks.on_progress(min(1.0, float(segment.end) / duration))
+                    if hooks.should_stop():
+                        raise TranscriptionCancelled
         except (av.error.FFmpegError, IndexError) as exc:
             # IndexError — у файла нет аудиопотока
             raise GatewayError(
