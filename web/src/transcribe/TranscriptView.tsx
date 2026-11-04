@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import type { Transcription } from "../api/types";
 import { CopyButton } from "../components/CopyButton";
 import { EXPORT_FORMATS, EXPORTERS, formatClock, type ExportFormat } from "./exports";
+import { SegmentRow } from "./SegmentRow";
+import { activeIndex, groupWords } from "./words";
 import { baseName, isVideo } from "./media";
 
 interface Props {
@@ -28,22 +30,12 @@ function download(content: string, name: string, type: string): void {
   URL.revokeObjectURL(url);
 }
 
-/** Таймкод сегмента; скобки — только для доступного имени ("[00:00:01] текст"). */
-function Timecode({ seconds }: { seconds: number }) {
-  return (
-    <span className="timestamp">
-      <span className="visually-hidden">[</span>
-      {formatClock(seconds)}
-      <span className="visually-hidden">]</span>
-    </span>
-  );
-}
-
 /** Результат: плеер, текст, сегменты с перемоткой, скачивание. */
 export function TranscriptView({ result, source, onReset }: Props) {
   const mediaRef = useRef<HTMLVideoElement & HTMLAudioElement>(null);
   const [playerFailed, setPlayerFailed] = useState(false);
-  const [active, setActive] = useState<number | null>(null);
+  const [active, setActive] = useState<{ segment: number; word: number | null } | null>(null);
+  const groups = useMemo(() => groupWords(result.segments, result.words), [result]);
   const video = isVideo(source);
 
   // object URL не читает файл в память (важно для видео на гигабайты); src ставится напрямую,
@@ -59,19 +51,37 @@ export function TranscriptView({ result, source, onReset }: Props) {
     };
   }, [source]);
 
-  const seek = (start: number) => {
-    const element = mediaRef.current;
-    if (element === null || playerFailed) return;
-    element.currentTime = start;
-    element.play().catch(() => {
-      // автовоспроизведение запрещено — пользователь нажмёт play сам
-    });
-  };
+  // стабильная ссылка: строки сегментов мемоизированы
+  const seek = useCallback(
+    (start: number) => {
+      const element = mediaRef.current;
+      if (element === null || playerFailed) return;
+      element.currentTime = start;
+      element.play().catch(() => {
+        // автовоспроизведение запрещено — пользователь нажмёт play сам
+      });
+    },
+    [playerFailed],
+  );
 
   const onTimeUpdate = () => {
     const time = mediaRef.current?.currentTime ?? 0;
-    const index = result.segments.findIndex((s) => time >= s.start && time < s.end);
-    setActive(index < 0 ? null : index);
+    const segment = activeIndex(result.segments, time);
+    const word = segment === null ? null : activeIndex(groups[segment] ?? [], time);
+    setActive((prev) =>
+      prev?.segment === segment && prev.word === word
+        ? prev
+        : segment === null
+          ? null
+          : { segment, word },
+    );
+  };
+
+  // клик по слову: один обработчик на весь список вместо десятков тысяч
+  const onWordClick = (event: MouseEvent<HTMLOListElement>) => {
+    if (!(event.target instanceof Element)) return;
+    const start = event.target.closest("[data-start]")?.getAttribute("data-start");
+    if (start !== null && start !== undefined) seek(Number(start));
   };
 
   const empty = result.text.trim() === "" && result.segments.length === 0;
@@ -148,30 +158,20 @@ export function TranscriptView({ result, source, onReset }: Props) {
             <div className="sheet-head">
               <h3>Сегменты</h3>
               {!playerFailed && (
-                <span className="muted small">Нажмите на фразу, чтобы перемотать к ней</span>
+                <span className="muted small">Нажмите на слово или таймкод, чтобы перемотать</span>
               )}
             </div>
-            <ol className="segments">
+            <ol className="segments" onClick={onWordClick}>
               {result.segments.map((segment, index) => (
-                <li key={segment.id} className={index === active ? "segment-active" : undefined}>
-                  {playerFailed ? (
-                    <span className="segment">
-                      <Timecode seconds={segment.start} />{" "}
-                      <span className="segment-text">{segment.text.trim()}</span>
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      className="segment"
-                      onClick={() => {
-                        seek(segment.start);
-                      }}
-                    >
-                      <Timecode seconds={segment.start} />{" "}
-                      <span className="segment-text">{segment.text.trim()}</span>
-                    </button>
-                  )}
-                </li>
+                <SegmentRow
+                  key={segment.id}
+                  segment={segment}
+                  words={groups[index] ?? []}
+                  active={active?.segment === index}
+                  activeWord={active?.segment === index ? active.word : null}
+                  seekable={!playerFailed}
+                  onSeek={seek}
+                />
               ))}
             </ol>
           </section>

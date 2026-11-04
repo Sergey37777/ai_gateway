@@ -10,6 +10,11 @@ test("аудио ≤ лимита: текст и скачивание srt", asyn
   await page.goto("/");
   await page.getByLabel("Аудио или видео файл").setInputFiles(HELLO_WAV);
   await expect(page.locator(".transcript-text")).toContainText(/hello/i, { timeout: 120_000 });
+  // пословные таймкоды: слова видны и кликабельны
+  const firstWord = page.locator(".word").first();
+  await expect(firstWord).toBeVisible();
+  await firstWord.click();
+  await expect(page.getByRole("alert")).toHaveCount(0);
 
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "srt" }).click();

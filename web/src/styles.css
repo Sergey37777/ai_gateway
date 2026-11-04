@@ -775,28 +775,58 @@ label {
   display: grid;
   grid-template-columns: 76px minmax(0, 1fr);
   gap: 12px;
-  width: 100%;
-  text-align: left;
-  background: none;
-  color: var(--ink);
-  border: none;
   border-radius: var(--r-s);
   padding: 6px 12px;
-  font-weight: 400;
   line-height: 1.5;
 }
 
-button.segment:hover:not(:disabled) {
+.segment:hover {
   background: var(--sheet-2);
 }
 
-.segment-active .segment,
-.segment-active button.segment:hover:not(:disabled) {
+.segment-active,
+.segment-active:hover {
   background: var(--signal-soft);
+}
+
+.segment-time {
+  align-self: start;
+  justify-self: start;
+  padding: 0 4px;
+  margin-left: -4px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  font-weight: 400;
+  line-height: inherit;
+}
+
+button.segment-time:hover:not(:disabled) {
+  background: none;
 }
 
 .segment-text {
   max-width: 68ch;
+}
+
+.word {
+  border-radius: 4px;
+  transition: background-color 120ms;
+}
+
+.word[data-start] {
+  cursor: pointer;
+}
+
+.word[data-start]:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--signal-quiet);
+  text-underline-offset: 3px;
+}
+
+.word-active {
+  background: color-mix(in srgb, var(--signal) 16%, transparent);
+  color: var(--signal);
 }
 
 .timestamp {
@@ -807,7 +837,7 @@ button.segment:hover:not(:disabled) {
 }
 
 .segment-active .timestamp,
-button.segment:hover .timestamp {
+button.segment-time:hover .timestamp {
   color: var(--signal);
 }
 

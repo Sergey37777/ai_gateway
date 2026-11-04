@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Transcription, UiConfig } from "../api/types";
@@ -31,7 +31,11 @@ const RESULT: Transcription = {
     { id: 0, start: 0, end: 1.5, text: " Привет." },
     { id: 1, start: 1.5, end: 3, text: " Мир." },
   ],
-  words: [],
+  words: [
+    { word: " Привет.", start: 0, end: 1.5 },
+    { word: " Мир", start: 1.5, end: 2.2 },
+    { word: " вокруг.", start: 2.2, end: 3 },
+  ],
   raw: "{}",
 };
 
@@ -99,13 +103,65 @@ test("успешное распознавание: сегменты и пере�
     { model: "whisper-base", language: null },
     expect.objectContaining({ signal: expect.any(AbortSignal) as unknown }),
   );
-  await user.click(screen.getByRole("button", { name: "[00:00:01] Мир." }));
+  await user.click(screen.getByRole("button", { name: "[00:00:01]" }));
   const media = document.querySelector("audio");
   expect(media?.currentTime).toBe(1.5);
   expect(onDirtyChange).toHaveBeenLastCalledWith(true);
   for (const format of ["txt", "srt", "vtt", "json"]) {
     expect(screen.getByRole("button", { name: format })).toBeInTheDocument();
   }
+});
+
+async function showResult(result: Transcription) {
+  const transcribe = vi.fn<TranscribeFn>(() => Promise.resolve(result));
+  const { user } = setup({ transcribe });
+  await user.upload(
+    screen.getByLabelText("Аудио или видео файл"),
+    new File(["x"], "a.wav", { type: "audio/wav" }),
+  );
+  await screen.findByRole("button", { name: "Распознать другой файл" });
+  const media = document.querySelector("audio");
+  if (media === null) throw new Error("нет плеера");
+  return { user, media };
+}
+
+test("клик по слову перематывает к его началу", async () => {
+  const play = vi.spyOn(HTMLMediaElement.prototype, "play");
+  const { user, media } = await showResult(RESULT);
+  await user.click(screen.getByText("вокруг."));
+  expect(media.currentTime).toBe(2.2);
+  expect(play).toHaveBeenCalled();
+});
+
+test("клик мимо слова не перематывает", async () => {
+  const { user, media } = await showResult(RESULT);
+  media.currentTime = 0.7;
+  const list = document.querySelector(".segments");
+  if (list === null) throw new Error("нет списка сегментов");
+  await user.click(list);
+  expect(media.currentTime).toBe(0.7);
+});
+
+test("текущее слово подсвечено", async () => {
+  const { media } = await showResult(RESULT);
+  media.currentTime = 2.5;
+  fireEvent.timeUpdate(media);
+  expect(screen.getByText("вокруг.")).toHaveClass("word-active");
+  expect(screen.getByText("Привет.")).not.toHaveClass("word-active");
+});
+
+test("без слов текст сегмента строкой", async () => {
+  await showResult({ ...RESULT, words: [] });
+  expect(screen.getByText("Привет.")).toBeInTheDocument();
+  expect(document.querySelector(".word")).toBeNull();
+});
+
+test("плеер не открылся — слова и таймкоды не кликабельны", async () => {
+  const { user, media } = await showResult(RESULT);
+  fireEvent.error(media);
+  expect(screen.queryByRole("button", { name: "[00:00:01]" })).toBeNull();
+  await user.click(screen.getByText("вокруг."));
+  expect(screen.getByText("Браузер не может воспроизвести этот файл")).toBeInTheDocument();
 });
 
 test("выбранные модель и язык уходят в запрос", async () => {
