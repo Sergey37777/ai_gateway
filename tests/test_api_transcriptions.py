@@ -4,27 +4,32 @@ import asyncio
 import threading
 import uuid
 from dataclasses import replace
+from typing import Any  # JSON ответа в тестах
 
 from ai_gateway.backends.base import Word
+from tests.conftest import GatewayClient
 from tests.fakes import FakeTranscriptionBackend, make_result
 
 URL = "/api/transcriptions"
 FILES = {"file": ("meeting.wav", b"RIFF....", "audio/wav")}
 
 
-async def wait_status(client, tid, status, timeout=3.0):
+async def wait_status(
+    client: GatewayClient, tid: str, status: str, timeout: float = 3.0
+) -> dict[str, Any]:
     async with asyncio.timeout(timeout):
         while True:
-            body = (await client.get(f"{URL}/{tid}")).json()
+            body: dict[str, Any] = (await client.get(f"{URL}/{tid}")).json()
             if body.get("status") == status:
                 return body
             await asyncio.sleep(0.01)
 
 
-async def create(client, **data):
+async def create(client: GatewayClient, **data: str) -> dict[str, Any]:
     r = await client.post(URL, files=FILES, data=data)
     assert r.status_code == 202, r.text
-    return r.json()
+    body: dict[str, Any] = r.json()
+    return body
 
 
 async def test_create_returns_202_queued(make_client):
