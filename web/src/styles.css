@@ -418,3 +418,303 @@ button.segment:hover {
   font-size: 13px;
   color: var(--accent);
 }
+
+/* чат */
+
+.chat {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.chat-toolbar .row {
+  justify-content: space-between;
+}
+
+.chat-new {
+  margin-left: auto;
+}
+
+.chat-settings summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.chat-settings[open] summary {
+  margin-bottom: 12px;
+}
+
+.chat-empty {
+  text-align: center;
+  padding: 24px 0;
+}
+
+.chat-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.message {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.message-user {
+  align-self: flex-end;
+  max-width: min(85%, 640px);
+  background: var(--accent-soft);
+  border-radius: var(--radius) var(--radius) 2px var(--radius);
+  padding: 10px 14px;
+}
+
+.message-user textarea {
+  width: min(560px, 75vw);
+}
+
+.message-assistant {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+}
+
+.message-text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.message-actions,
+.message-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+
+.message-actions {
+  justify-content: flex-end;
+}
+
+.reasoning {
+  border-left: 3px solid var(--border);
+  padding-left: 10px;
+  color: var(--muted);
+}
+
+.reasoning summary {
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.reasoning-text {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+  font-size: 14px;
+}
+
+.typing {
+  margin: 0;
+}
+
+.markdown {
+  overflow-wrap: anywhere;
+}
+
+.markdown > :first-child {
+  margin-top: 0;
+}
+
+.markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown code {
+  font-family: var(--mono);
+  font-size: 0.92em;
+  background: var(--surface-2);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
+.markdown table {
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+}
+
+.markdown th,
+.markdown td {
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+}
+
+.code-block {
+  position: relative;
+}
+
+.code-block pre {
+  margin: 0;
+  overflow-x: auto;
+  background: var(--surface-2);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.code-block pre code {
+  background: none;
+  padding: 0;
+}
+
+.code-copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 2px 8px;
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.composer {
+  position: sticky;
+  bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 8%);
+}
+
+.composer textarea {
+  width: 100%;
+  min-height: 64px;
+}
+
+.composer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.composer-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.thumbs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.thumbs li {
+  position: relative;
+}
+
+.thumbs img {
+  display: block;
+  height: 72px;
+  max-width: 160px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.thumb-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  line-height: 1;
+  background: var(--fg);
+  color: var(--bg);
+}
+
+/* подсветка кода (классы highlight.js), под обе темы */
+
+.hljs-comment,
+.hljs-quote {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-type {
+  color: #a626a4;
+}
+
+.hljs-string,
+.hljs-regexp,
+.hljs-addition {
+  color: #2f8a3a;
+}
+
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet {
+  color: #b05a00;
+}
+
+.hljs-title,
+.hljs-section,
+.hljs-function .hljs-title {
+  color: #2f6fde;
+}
+
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-built_in {
+  color: #b5493a;
+}
+
+.hljs-deletion {
+  color: var(--danger);
+}
+
+@media (prefers-color-scheme: dark) {
+  .hljs-keyword,
+  .hljs-selector-tag,
+  .hljs-literal,
+  .hljs-type {
+    color: #d08ce8;
+  }
+
+  .hljs-string,
+  .hljs-regexp,
+  .hljs-addition {
+    color: #8fd18c;
+  }
+
+  .hljs-number,
+  .hljs-symbol,
+  .hljs-bullet {
+    color: #f0b46c;
+  }
+
+  .hljs-title,
+  .hljs-section,
+  .hljs-function .hljs-title {
+    color: #7eaaf6;
+  }
+
+  .hljs-attr,
+  .hljs-attribute,
+  .hljs-variable,
+  .hljs-built_in {
+    color: #f08d7e;
+  }
+}

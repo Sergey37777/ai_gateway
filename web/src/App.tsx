@@ -5,7 +5,7 @@ import { userMessage } from "./api/errors";
 import type { UiConfig } from "./api/types";
 import { ApiKeyDialog } from "./components/ApiKeyDialog";
 import { ErrorBanner } from "./components/ErrorBanner";
-import type { ScreenProps } from "./screen";
+import { ChatScreen } from "./chat/ChatScreen";
 import { TranscribeScreen } from "./transcribe/TranscribeScreen";
 
 type Tab = "transcribe" | "chat";
@@ -23,11 +23,6 @@ type ConfigState =
   | { status: "loading" }
   | { status: "error"; message: string }
   | { status: "ready"; config: UiConfig };
-
-// временная заглушка — экран чата появляется в следующей задаче плана
-function ChatPlaceholder(_props: ScreenProps) {
-  return <p className="muted">Чат появится здесь.</p>;
-}
 
 export function App() {
   const [configState, setConfigState] = useState<ConfigState>({ status: "loading" });
@@ -159,7 +154,7 @@ export function App() {
               aria-labelledby="tab-chat"
               hidden={tab !== "chat"}
             >
-              <ChatPlaceholder config={configState.config} onDirtyChange={onChatDirty} />
+              <ChatScreen config={configState.config} onDirtyChange={onChatDirty} />
             </section>
           </>
         )}
