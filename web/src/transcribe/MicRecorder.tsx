@@ -97,7 +97,7 @@ export function MicRecorder({ disabled, onRecorded }: Props) {
   if (!available) {
     return (
       <div className="mic">
-        <button type="button" className="button-secondary" disabled>
+        <button type="button" className="button-secondary button-mic" disabled>
           Записать с микрофона
         </button>
         <p className="muted mic-hint">
@@ -113,7 +113,7 @@ export function MicRecorder({ disabled, onRecorded }: Props) {
       {recording === null ? (
         <button
           type="button"
-          className="button-secondary"
+          className="button-secondary button-mic"
           disabled={disabled}
           onClick={() => {
             void start();
@@ -129,7 +129,8 @@ export function MicRecorder({ disabled, onRecorded }: Props) {
             recorderRef.current?.stop();
           }}
         >
-          <span className="rec-dot" aria-hidden="true" /> Остановить · {formatClock(elapsed)}
+          <span className="rec-dot" aria-hidden="true" /> Остановить{" "}
+          <span className="tabular">{formatClock(elapsed)}</span>
         </button>
       )}
       {error !== null && <p className="mic-error">{error}</p>}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { formatClock } from "./exports";
-import type { Phase } from "./state";
+import { progressValue, type Phase } from "./state";
 
 interface Props {
   phase: Phase;
@@ -26,40 +26,44 @@ export function Progress({ phase, onCancel }: Props) {
     };
   }, [transcribing]);
 
-  let label: string;
-  let value: number | null = null;
+  let stage: string;
+  let detail: string | null;
   switch (phase.name) {
     case "extracting":
-      label =
-        phase.progress === null
-          ? "Извлечение аудио из видео…"
-          : `Извлечение аудио из видео… ${percent(phase.progress)}`;
-      value = phase.progress;
+      stage = "Извлечение аудио из видео…";
+      detail = phase.progress === null ? null : percent(phase.progress);
       break;
     case "uploading":
-      label = `Загрузка… ${percent(phase.progress)}`;
-      value = phase.progress;
+      stage = "Загрузка…";
+      detail = percent(phase.progress);
       break;
     case "transcribing":
-      label = `Распознавание… ${formatClock(Math.max(0, (now - phase.startedAt) / 1000))}`;
+      stage = "Распознавание…";
+      detail = formatClock(Math.max(0, (now - phase.startedAt) / 1000));
       break;
     default:
       return null;
   }
+  const label = detail === null ? stage : `${stage} ${detail}`;
+  const value = progressValue(phase);
 
   return (
-    <div className="card progress" aria-live="polite">
-      <div className="progress-head">
-        <span>{label}</span>
-        <button type="button" className="button-secondary" onClick={onCancel}>
-          Отмена
-        </button>
-      </div>
-      {value === null ? (
-        <progress aria-label={label} />
-      ) : (
-        <progress aria-label={label} max={1} value={value} />
-      )}
+    <div className="progress">
+      <p
+        className="progress-label"
+        role="progressbar"
+        aria-label={label}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={typeof value === "number" ? Math.round(value * 100) : undefined}
+        aria-live="polite"
+      >
+        {stage}
+        {detail !== null && <span className="progress-detail"> {detail}</span>}
+      </p>
+      <button type="button" className="button-secondary" onClick={onCancel}>
+        Отмена
+      </button>
     </div>
   );
 }

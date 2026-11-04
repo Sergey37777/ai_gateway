@@ -28,6 +28,17 @@ function download(content: string, name: string, type: string): void {
   URL.revokeObjectURL(url);
 }
 
+/** Таймкод сегмента; скобки — только для доступного имени ("[00:00:01] текст"). */
+function Timecode({ seconds }: { seconds: number }) {
+  return (
+    <span className="timestamp">
+      <span className="visually-hidden">[</span>
+      {formatClock(seconds)}
+      <span className="visually-hidden">]</span>
+    </span>
+  );
+}
+
 /** Результат: плеер, текст, сегменты с перемоткой, скачивание. */
 export function TranscriptView({ result, source, onReset }: Props) {
   const mediaRef = useRef<HTMLVideoElement & HTMLAudioElement>(null);
@@ -76,19 +87,22 @@ export function TranscriptView({ result, source, onReset }: Props) {
   };
 
   return (
-    <div className="stack">
-      <div className="card stack">
+    <div className="result">
+      <aside className="result-side">
         <div className="result-head">
-          <div>
-            <h2 className="result-title">{source.name}</h2>
-            <p className="muted">
-              {result.language !== "" && `${result.language} · `}
-              {formatClock(result.duration)}
-            </p>
-          </div>
-          <button type="button" className="button-secondary" onClick={onReset}>
-            Распознать другой файл
-          </button>
+          <h2 className="result-title">{source.name}</h2>
+          <dl className="result-meta">
+            {result.language !== "" && (
+              <div>
+                <dt>Язык</dt>
+                <dd>{result.language}</dd>
+              </div>
+            )}
+            <div>
+              <dt>Длительность</dt>
+              <dd className="tabular">{formatClock(result.duration)}</dd>
+            </div>
+          </dl>
         </div>
         {!playerFailed &&
           (video ? (
@@ -97,43 +111,53 @@ export function TranscriptView({ result, source, onReset }: Props) {
             <audio className="player" {...mediaProps} />
           ))}
         {playerFailed && <p className="muted">Браузер не может воспроизвести этот файл</p>}
-        <div className="row downloads">
-          <span className="muted">Скачать:</span>
-          {EXPORT_FORMATS.map((format) => (
-            <button
-              key={format}
-              type="button"
-              className="button-secondary"
-              onClick={() => {
-                download(EXPORTERS[format](result), `${name}.${format}`, MIME[format]);
-              }}
-            >
-              {format}
-            </button>
-          ))}
+        <div className="downloads">
+          <span className="muted small">Скачать</span>
+          <div className="downloads-list">
+            {EXPORT_FORMATS.map((format) => (
+              <button
+                key={format}
+                type="button"
+                className="button-chip"
+                onClick={() => {
+                  download(EXPORTERS[format](result), `${name}.${format}`, MIME[format]);
+                }}
+              >
+                {format}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+        <button type="button" className="button-secondary result-reset" onClick={onReset}>
+          Распознать другой файл
+        </button>
+      </aside>
 
       {empty ? (
-        <p className="card muted">Речь не распознана</p>
+        <p className="sheet muted result-main">Речь не распознана</p>
       ) : (
-        <>
-          <div className="card stack">
-            <div className="result-head">
+        <div className="result-main">
+          <section className="sheet">
+            <div className="sheet-head">
               <h3>Текст</h3>
               <CopyButton text={result.text.trim()} />
             </div>
             <p className="transcript-text">{result.text.trim()}</p>
-          </div>
-          <div className="card">
-            <h3>Сегменты</h3>
+          </section>
+          <section className="sheet">
+            <div className="sheet-head">
+              <h3>Сегменты</h3>
+              {!playerFailed && (
+                <span className="muted small">Нажмите на фразу, чтобы перемотать к ней</span>
+              )}
+            </div>
             <ol className="segments">
               {result.segments.map((segment, index) => (
                 <li key={segment.id} className={index === active ? "segment-active" : undefined}>
                   {playerFailed ? (
                     <span className="segment">
-                      <span className="timestamp">[{formatClock(segment.start)}]</span>{" "}
-                      {segment.text.trim()}
+                      <Timecode seconds={segment.start} />{" "}
+                      <span className="segment-text">{segment.text.trim()}</span>
                     </span>
                   ) : (
                     <button
@@ -143,15 +167,15 @@ export function TranscriptView({ result, source, onReset }: Props) {
                         seek(segment.start);
                       }}
                     >
-                      <span className="timestamp">[{formatClock(segment.start)}]</span>{" "}
-                      {segment.text.trim()}
+                      <Timecode seconds={segment.start} />{" "}
+                      <span className="segment-text">{segment.text.trim()}</span>
                     </button>
                   )}
                 </li>
               ))}
             </ol>
-          </div>
-        </>
+          </section>
+        </div>
       )}
     </div>
   );

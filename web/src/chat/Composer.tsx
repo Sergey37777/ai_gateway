@@ -82,7 +82,7 @@ export function Composer({
 
   return (
     <div
-      className="composer card"
+      className="composer"
       onDragOver={(event) => {
         event.preventDefault();
       }}
@@ -110,7 +110,7 @@ export function Composer({
       {imageError !== null && <p className="composer-error">{imageError}</p>}
       <textarea
         aria-label="Сообщение"
-        placeholder="Сообщение… (Enter — отправить, Shift+Enter — новая строка)"
+        placeholder="Сообщение"
         rows={3}
         value={text}
         disabled={disabled}
@@ -140,14 +140,21 @@ export function Composer({
         />
         <button
           type="button"
-          className="button-secondary"
+          className="button-icon"
+          aria-label="Прикрепить картинку"
+          title="Прикрепить картинку"
           disabled={disabled}
           onClick={() => {
             fileRef.current?.click();
           }}
         >
-          Прикрепить картинку
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="3.5" y="4.5" width="17" height="15" rx="3" />
+            <circle cx="9" cy="10" r="1.8" />
+            <path d="m4 17 5-4.5 4 3.5 3-2.5 4.5 3.5" />
+          </svg>
         </button>
+        <span className="composer-hint">Enter — отправить, Shift+Enter — новая строка</span>
         {streaming ? (
           <button type="button" className="button-danger" onClick={onStop}>
             Стоп

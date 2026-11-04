@@ -8,7 +8,7 @@ import { FilePicker } from "./FilePicker";
 import { MicRecorder } from "./MicRecorder";
 import { extractedTooLarge, planUpload } from "./plan";
 import { Progress } from "./Progress";
-import { initialTranscribeState, isBusy, transcribeReducer } from "./state";
+import { initialTranscribeState, isBusy, progressValue, transcribeReducer } from "./state";
 import { TranscriptView } from "./TranscriptView";
 
 interface Deps {
@@ -119,8 +119,8 @@ export function TranscribeScreen({ config, onDirtyChange, deps }: Props) {
   }
 
   return (
-    <div className="stack">
-      <div className="card stack">
+    <div className="stack transcribe">
+      <div className="toolbar">
         <div className="row">
           <div className="field">
             <label htmlFor="transcribe-model">Модель</label>
@@ -158,16 +158,23 @@ export function TranscribeScreen({ config, onDirtyChange, deps }: Props) {
             </select>
           </div>
         </div>
-        <FilePicker disabled={busy} onFile={onFile} />
-        <MicRecorder disabled={busy} onRecorded={onFile} />
-        <p className="muted small">
-          Лимит загрузки — {config.max_upload_mb} МБ. Из видео больше лимита браузер сам извлечёт
-          аудиодорожку и отправит только её.
-        </p>
       </div>
+      <FilePicker
+        disabled={busy}
+        onFile={onFile}
+        progress={progressValue(state.phase)}
+        status={busy ? <Progress phase={state.phase} onCancel={cancel} /> : undefined}
+        footnote={
+          <>
+            Файлы до {config.max_upload_mb} МБ. Из видео больше лимита браузер сам извлечёт
+            аудиодорожку и отправит только её.
+          </>
+        }
+      >
+        <MicRecorder disabled={busy} onRecorded={onFile} />
+      </FilePicker>
       {rejection !== null && <ErrorBanner message={rejection} />}
       {state.phase.name === "error" && <ErrorBanner message={state.phase.message} />}
-      <Progress phase={state.phase} onCancel={cancel} />
     </div>
   );
 }

@@ -88,3 +88,20 @@ export function transcribeReducer(
 export function isBusy(phase: Phase): boolean {
   return phase.name === "extracting" || phase.name === "uploading" || phase.name === "transcribing";
 }
+
+/**
+ * Доля выполненного для волны: число — известна, `null` — идёт без оценки,
+ * `undefined` — операции нет.
+ */
+export function progressValue(phase: Phase): number | null | undefined {
+  switch (phase.name) {
+    case "extracting":
+      return phase.progress;
+    case "uploading":
+      return phase.progress;
+    case "transcribing":
+      return null;
+    default:
+      return undefined;
+  }
+}

@@ -117,12 +117,16 @@ export function ChatScreen({ config, onDirtyChange, deps }: Props) {
   };
 
   if (models.length === 0) {
-    return <p className="card muted">В models.yaml нет чат-моделей (backend: ollama).</p>;
+    return (
+      <p className="sheet muted">
+        В models.yaml нет чат-моделей. Добавьте модель с backend: ollama и перезапустите шлюз.
+      </p>
+    );
   }
 
   return (
     <div className="chat">
-      <div className="card stack chat-toolbar">
+      <div className="toolbar chat-toolbar">
         <div className="row">
           <div className="field">
             <label htmlFor="chat-model">Модель</label>
@@ -153,9 +157,13 @@ export function ChatScreen({ config, onDirtyChange, deps }: Props) {
       </div>
 
       {state.messages.length === 0 ? (
-        <p className="muted chat-empty">
-          Задайте вопрос модели {model}. Картинку можно вставить из буфера.
-        </p>
+        <div className="chat-empty">
+          <p className="chat-empty-title">О чём спросить {model}?</p>
+          <p className="muted">
+            Картинку можно вставить из буфера или перетащить в поле ввода. Диалог живёт только в
+            этой вкладке.
+          </p>
+        </div>
       ) : (
         <MessageList
           messages={state.messages}

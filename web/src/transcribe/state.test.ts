@@ -1,6 +1,11 @@
 import { expect, test } from "vitest";
 import type { Transcription } from "../api/types";
-import { initialTranscribeState, transcribeReducer, type TranscribeAction } from "./state";
+import {
+  initialTranscribeState,
+  progressValue,
+  transcribeReducer,
+  type TranscribeAction,
+} from "./state";
 
 const RESULT: Transcription = {
   text: "x",
@@ -77,4 +82,11 @@ test("fail и reset", () => {
   s = transcribeReducer(s, { type: "reset" });
   expect(s.phase).toEqual({ name: "idle" });
   expect(s.source).toBeNull();
+});
+
+test("доля для волны: известна при загрузке, без оценки при распознавании, нет вне операции", () => {
+  expect(progressValue({ name: "uploading", progress: 0.4 })).toBe(0.4);
+  expect(progressValue({ name: "extracting", progress: null })).toBeNull();
+  expect(progressValue({ name: "transcribing", startedAt: 0 })).toBeNull();
+  expect(progressValue({ name: "idle" })).toBeUndefined();
 });

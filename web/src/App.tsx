@@ -93,7 +93,12 @@ export function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>ai_gateway</h1>
+        <h1 className="brand">
+          <svg className="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+            <path d="M8 20v-8M12 23V9M16 20v-8M20 25V7M24 20v-8" />
+          </svg>
+          <span className="brand-name">ai_gateway</span>
+        </h1>
         {configState.status === "ready" && (
           <nav role="tablist" className="tabs">
             {TABS.map(({ id, label }) => (
