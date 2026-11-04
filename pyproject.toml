@@ -37,7 +37,7 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 addopts = "-m 'not integration'"
-markers = ["integration: реальная модель faster-whisper на CPU (медленно, качает веса)"]
+markers = ["integration: реальные модели faster-whisper и Ollama (медленно, качает веса)"]
 
 [tool.ruff]
 line-length = 100
