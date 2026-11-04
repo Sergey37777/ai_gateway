@@ -52,6 +52,13 @@ def model_unavailable(message: str) -> GatewayError:
     return GatewayError(503, "model_unavailable", message, headers={"Retry-After": "30"})
 
 
+def database_unavailable() -> GatewayError:
+    """503: PostgreSQL недоступна (история и очередь); клиент может повторить."""
+    return GatewayError(
+        503, "database_unavailable", "База данных недоступна", headers={"Retry-After": "5"}
+    )
+
+
 def error_response(error: GatewayError) -> JSONResponse:
     """JSON-ответ с ошибкой в формате OpenAI."""
     return JSONResponse(error.to_body(), status_code=error.status_code, headers=error.headers)

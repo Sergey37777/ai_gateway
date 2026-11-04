@@ -2,13 +2,27 @@
 
 import json
 import threading
+import uuid
 from collections.abc import AsyncIterator
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import httpx
 
 from ai_gateway.backends.base import JsonObject, Segment, TranscriptionOptions, TranscriptionResult
+from ai_gateway.errors import database_unavailable
 from ai_gateway.registry import WhisperSpec
+from ai_gateway.store import (
+    Cursor,
+    ListItem,
+    ListQuery,
+    NewTranscription,
+    Page,
+    Status,
+    TranscriptionRecord,
+)
 
 
 class FakeClock:
@@ -187,3 +201,198 @@ class FakeOllama:
                 raise item
             return item
         return httpx.Response(404)
+
+
+class InMemoryTranscriptionStore:
+    """`TranscriptionStore` в памяти: та же семантика переходов; поиск — подстрока."""
+
+    def __init__(self) -> None:
+        self.records: dict[uuid.UUID, TranscriptionRecord] = {}
+        self.results: dict[uuid.UUID, TranscriptionResult] = {}
+        self.available = True
+        self._tick = 0
+
+    def _now(self) -> datetime:
+        # строго возрастающее время: порядок записей детерминирован
+        self._tick += 1
+        return datetime(2026, 11, 4, tzinfo=UTC) + timedelta(microseconds=self._tick)
+
+    def _check(self) -> None:
+        if not self.available:
+            raise database_unavailable()
+
+    def _put(self, tid: uuid.UUID, **changes: Any) -> TranscriptionRecord:
+        record = replace(self.records[tid], **changes)
+        self.records[tid] = record
+        return record
+
+    async def create(self, new: NewTranscription) -> TranscriptionRecord:
+        self._check()
+        now = self._now()
+        record = TranscriptionRecord(
+            id=new.id,
+            status=new.status,
+            source=new.source,
+            title=new.title,
+            filename=new.filename,
+            params=new.params,
+            upload_path=new.upload_path,
+            audio_path=None,
+            audio_bytes=None,
+            language=None,
+            duration=None,
+            text=None,
+            error_code=None,
+            error_message=None,
+            created_at=now,
+            started_at=now if new.status == "running" else None,
+            finished_at=None,
+        )
+        self.records[new.id] = record
+        return record
+
+    async def get(self, tid: uuid.UUID) -> TranscriptionRecord | None:
+        self._check()
+        return self.records.get(tid)
+
+    async def get_result(self, tid: uuid.UUID) -> TranscriptionResult | None:
+        self._check()
+        return self.results.get(tid) if tid in self.records else None
+
+    async def list(self, query: ListQuery) -> Page:
+        self._check()
+        records = sorted(self.records.values(), key=lambda r: (r.created_at, r.id), reverse=True)
+        if query.q:
+            needle = query.q.lower()
+            records = [
+                r for r in records if needle in r.title.lower() or needle in (r.text or "").lower()
+            ]
+        if query.status is not None:
+            records = [r for r in records if r.status == query.status]
+        if query.before is not None:
+            bound = (query.before.created_at, query.before.id)
+            records = [r for r in records if (r.created_at, r.id) < bound]
+        limit = max(1, min(query.limit, 100))
+        page = records[:limit]
+        has_more = len(records) > limit
+        last = page[-1] if page else None
+        return Page(
+            items=[ListItem(record=r) for r in page],
+            next=Cursor(created_at=last.created_at, id=last.id) if has_more and last else None,
+        )
+
+    async def claim_next(self) -> TranscriptionRecord | None:
+        self._check()
+        queued = sorted(
+            (r for r in self.records.values() if r.status == "queued"),
+            key=lambda r: (r.created_at, r.id),
+        )
+        if not queued:
+            return None
+        return self._put(queued[0].id, status="running", started_at=self._now())
+
+    async def finish(
+        self,
+        tid: uuid.UUID,
+        result: TranscriptionResult,
+        audio_path: str | None,
+        audio_bytes: int | None,
+    ) -> None:
+        self._check()
+        record = self.records.get(tid)
+        if record is None or record.status != "running":
+            return
+        self._put(
+            tid,
+            status="done",
+            upload_path=None,
+            audio_path=audio_path,
+            audio_bytes=audio_bytes,
+            language=result.language,
+            duration=result.duration,
+            text=result.text,
+            finished_at=self._now(),
+        )
+        self.results[tid] = result
+
+    async def _final(
+        self, tid: uuid.UUID, status: Status, code: str | None, message: str | None
+    ) -> None:
+        self._check()
+        record = self.records.get(tid)
+        if record is None or record.status not in ("queued", "running"):
+            return
+        self._put(
+            tid, status=status, error_code=code, error_message=message, finished_at=self._now()
+        )
+
+    async def fail(self, tid: uuid.UUID, code: str, message: str) -> None:
+        await self._final(tid, "failed", code, message)
+
+    async def cancel(self, tid: uuid.UUID) -> None:
+        await self._final(tid, "cancelled", None, None)
+
+    async def requeue(self, tid: uuid.UUID) -> TranscriptionRecord | None:
+        self._check()
+        record = self.records.get(tid)
+        if (
+            record is None
+            or record.status not in ("failed", "cancelled")
+            or record.upload_path is None
+        ):
+            return None
+        return self._put(
+            tid,
+            status="queued",
+            error_code=None,
+            error_message=None,
+            started_at=None,
+            finished_at=None,
+        )
+
+    async def requeue_running(self) -> int:
+        self._check()
+        running = [r.id for r in self.records.values() if r.status == "running"]
+        for tid in running:
+            self._put(tid, status="queued", started_at=None)
+        return len(running)
+
+    async def rename(self, tid: uuid.UUID, title: str) -> TranscriptionRecord | None:
+        self._check()
+        return self._put(tid, title=title) if tid in self.records else None
+
+    async def delete(self, tid: uuid.UUID) -> TranscriptionRecord | None:
+        self._check()
+        self.results.pop(tid, None)
+        return self.records.pop(tid, None)
+
+    async def queue_position(self, tid: uuid.UUID) -> int | None:
+        self._check()
+        record = self.records.get(tid)
+        if record is None or record.status != "queued":
+            return None
+        ahead = [
+            r
+            for r in self.records.values()
+            if r.status == "queued" and (r.created_at, r.id) < (record.created_at, record.id)
+        ]
+        return 1 + len(ahead)
+
+    async def counts(self) -> dict[Status, int]:
+        self._check()
+        counts: dict[Status, int] = {}
+        for record in self.records.values():
+            counts[record.status] = counts.get(record.status, 0) + 1
+        return counts
+
+    async def file_paths(self) -> set[str]:
+        self._check()
+        return {
+            path
+            for r in self.records.values()
+            for path in (r.upload_path, r.audio_path)
+            if path is not None
+        }
+
+    async def ping(self) -> bool:
+        return self.available

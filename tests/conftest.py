@@ -1,6 +1,7 @@
 import copy
 import sys
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -123,7 +124,9 @@ def postgres_url() -> Iterator[str]:
 
     with PostgresContainer("postgres:17-alpine", driver="psycopg") as container:
         url = container.get_connection_url()
-        migrate(url)
+        # env.py Alembic крутит свой asyncio.run — фикстура может подниматься внутри цикла теста
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            pool.submit(migrate, url).result()
         yield url
 
 
