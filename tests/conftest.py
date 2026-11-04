@@ -19,7 +19,12 @@ from ai_gateway.config import Settings
 from ai_gateway.db.engine import create_engine
 from ai_gateway.lifecycle import ModelManager
 from ai_gateway.registry import ModelRegistry
-from tests.fakes import FakeOllama, FakeTranscriptionBackend, InMemoryTranscriptionStore
+from tests.fakes import (
+    FakeOllama,
+    FakeTranscriptionBackend,
+    InMemoryTranscriptionStore,
+    fake_encode,
+)
 
 # реестр как в models.yaml (спецификация §4.4)
 REGISTRY_DATA: dict[str, Any] = {
@@ -107,6 +112,8 @@ async def make_client(tmp_path: Path) -> AsyncIterator[MakeClient]:
             settings, registry=registry, manager=manager, chat_backend=chat_backend, store=store
         )
         await lifespans.enter_async_context(app.router.lifespan_context(app))
+        # тестовые байты — не аудио: Opus кодирует фейк (настоящий — tests/test_opus.py)
+        app.state.service._encode = fake_encode
         client = GatewayClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
         client.backend = fake
         client.ollama = fake_ollama

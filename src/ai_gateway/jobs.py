@@ -120,6 +120,10 @@ class TranscriptionService:
         # синхронные распознавания доживают после обрыва соединения клиента
         self._detached: set[asyncio.Task[Outcome]] = set()
 
+    @property
+    def files(self) -> DataDir:
+        return self._files
+
     # --- приём ---------------------------------------------------------------------------
 
     async def _accept(

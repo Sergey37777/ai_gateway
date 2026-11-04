@@ -438,3 +438,9 @@ class InMemoryTranscriptionStore:
 
     async def ping(self) -> bool:
         return self.available
+
+
+def fake_encode(_src: Path, dst: Path) -> int:
+    """Вместо encode_opus в API-тестах: пишет 4 байта «аудио»."""
+    dst.write_bytes(b"opus")
+    return 4

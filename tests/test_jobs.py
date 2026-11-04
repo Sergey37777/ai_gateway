@@ -20,7 +20,12 @@ from ai_gateway.lifecycle import ModelManager
 from ai_gateway.registry import ModelRegistry
 from ai_gateway.store import Status, TranscriptionParams
 from tests.conftest import REGISTRY_DATA
-from tests.fakes import FakeTranscriptionBackend, InMemoryTranscriptionStore, make_result
+from tests.fakes import (
+    FakeTranscriptionBackend,
+    InMemoryTranscriptionStore,
+    fake_encode,
+    make_result,
+)
 
 PARAMS = TranscriptionParams(
     model="whisper-large-v3-turbo",
@@ -33,11 +38,6 @@ PARAMS = TranscriptionParams(
 
 def upload(name: str = "a.wav", data: bytes = b"RIFFdata") -> UploadFile:
     return UploadFile(io.BytesIO(data), filename=name)
-
-
-def fake_encode(_src: Path, dst: Path) -> int:
-    dst.write_bytes(b"opus")
-    return 4
 
 
 @dataclass
