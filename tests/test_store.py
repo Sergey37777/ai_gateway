@@ -287,3 +287,15 @@ async def test_database_unavailable():
         assert await store.ping() is False
     finally:
         await engine.dispose()
+
+
+async def test_fail_and_cancel_can_drop_upload(store):
+    failed = await store.create(new(status="running"))
+    await store.fail(failed.id, "invalid_audio", "не аудио", keep_upload=False)
+    record = await store.get(failed.id)
+    assert record is not None and record.upload_path is None
+    assert await store.requeue(failed.id) is None
+    cancelled = await store.create(new())
+    await store.cancel(cancelled.id, keep_upload=False)
+    record = await store.get(cancelled.id)
+    assert record is not None and record.upload_path is None

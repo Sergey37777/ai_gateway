@@ -22,15 +22,21 @@ from ai_gateway.config import (
     resolve_compute_type,
     resolve_device,
 )
+from ai_gateway.db.engine import create_engine, make_sessions, migrate
 from ai_gateway.errors import error_response, install_error_handlers, internal_error
-from ai_gateway.files import file_too_large
+from ai_gateway.files import DataDir, file_too_large
+from ai_gateway.jobs import TranscriptionService, Worker
 from ai_gateway.lifecycle import ModelManager
 from ai_gateway.registry import ModelRegistry
+from ai_gateway.store import SqlTranscriptionStore, TranscriptionStore
 from ai_gateway.web import mount_web
 
 TRANSCRIPTIONS_PATH = "/v1/audio/transcriptions"
 CHAT_PATH = "/v1/chat/completions"
-GUARDED_PATHS = frozenset({TRANSCRIPTIONS_PATH, CHAT_PATH})
+JOBS_PATH = "/api/transcriptions"
+GUARDED_PATHS = frozenset({TRANSCRIPTIONS_PATH, CHAT_PATH, JOBS_PATH})
+# ключ API нужен OpenAI-совместимому API и собственному API шлюза
+PROTECTED_PREFIXES = ("/v1/", "/api/")
 MIB = 1024 * 1024
 LOG_FORMAT = (
     "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | "
@@ -93,7 +99,7 @@ class RequestContextMiddleware:
 
 
 class ApiKeyMiddleware:
-    """Проверяет `Authorization: Bearer <key>` для `/v1/*`, если ключ задан.
+    """Проверяет `Authorization: Bearer <key>` для `/v1/*` и `/api/*`, если ключ задан.
 
     Именно middleware, а не зависимость FastAPI: зависимости выполняются после разбора
     multipart, и клиент без ключа успевал бы записать файл на диск.
@@ -104,7 +110,11 @@ class ApiKeyMiddleware:
         self.api_key = api_key
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if self.api_key and scope["type"] == "http" and scope["path"].startswith("/v1/"):
+        if (
+            self.api_key
+            and scope["type"] == "http"
+            and scope["path"].startswith(PROTECTED_PREFIXES)
+        ):
             authorization = dict(scope["headers"]).get(b"authorization", b"").decode("latin-1")
             if not api_key_valid(authorization, self.api_key):
                 await error_response(invalid_api_key())(scope, receive, send)
@@ -182,8 +192,9 @@ def create_app(
     registry: ModelRegistry | None = None,
     manager: ModelManager | None = None,
     chat_backend: ChatBackend | None = None,
+    store: TranscriptionStore | None = None,
 ) -> FastAPI:
-    """Фабрика приложения; реестр и менеджер можно внедрить (тесты с фейковым бэкендом)."""
+    """Фабрика приложения; реестр, менеджер, чат-бэкенд и хранилище можно внедрить (тесты)."""
     settings = settings if settings is not None else Settings()
 
     @contextlib.asynccontextmanager
@@ -211,22 +222,43 @@ def create_app(
             )
             app.state.chat_backend = own_chat
 
+        # история и очередь: без внедрённого хранилища — PostgreSQL с миграциями при старте
+        engine = None
+        jobs_store: TranscriptionStore | None = app.state.store
+        if jobs_store is None:
+            engine = create_engine(settings.database_url)
+            await asyncio.to_thread(migrate, settings.database_url)
+            jobs_store = SqlTranscriptionStore(make_sessions(engine))
+        files = DataDir(settings.data_dir)
+        files.ensure()
+        service = TranscriptionService(jobs_store, mgr, files, max_upload_mb=settings.max_upload_mb)
+        app.state.store, app.state.service = jobs_store, service
+        await service.recover()
+
         sweeper = asyncio.create_task(mgr.run_sweeper(settings.sweep_interval))
+        worker = asyncio.create_task(Worker(service, jobs_store).run())
         try:
             yield
         finally:
-            sweeper.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await sweeper
+            # прерванная задача останется running и при следующем старте вернётся в очередь
+            for task in (worker, sweeper):
+                task.cancel()
+            for task in (worker, sweeper):
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
             await mgr.shutdown()
             if own_chat is not None:
                 await own_chat.aclose()
+            if engine is not None:
+                await engine.dispose()
 
     app = FastAPI(title="ai_gateway", lifespan=lifespan)
     app.state.settings = settings
     app.state.registry = registry
     app.state.manager = manager
     app.state.chat_backend = chat_backend
+    app.state.store = store
+    app.state.service = None
     # без lifespan (тесты) устройство берётся из настроек; lifespan уточняет его
     app.state.device = "cpu" if settings.device == "auto" else settings.device
 

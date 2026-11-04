@@ -145,8 +145,10 @@ class TranscriptionStore(Protocol):
         audio_path: str | None,
         audio_bytes: int | None,
     ) -> None: ...
-    async def fail(self, tid: uuid.UUID, code: str, message: str) -> None: ...
-    async def cancel(self, tid: uuid.UUID) -> None: ...
+    async def fail(
+        self, tid: uuid.UUID, code: str, message: str, *, keep_upload: bool = True
+    ) -> None: ...
+    async def cancel(self, tid: uuid.UUID, *, keep_upload: bool = True) -> None: ...
     async def requeue(self, tid: uuid.UUID) -> TranscriptionRecord | None: ...
     async def requeue_running(self) -> int: ...
     async def rename(self, tid: uuid.UUID, title: str) -> TranscriptionRecord | None: ...
@@ -391,25 +393,37 @@ class SqlTranscriptionStore:
             )
 
     async def _set_final(
-        self, tid: uuid.UUID, status: Status, code: str | None, message: str | None
+        self,
+        tid: uuid.UUID,
+        status: Status,
+        code: str | None,
+        message: str | None,
+        *,
+        keep_upload: bool,
     ) -> None:
+        values: dict[str, object] = {
+            "status": status,
+            "error_code": code,
+            "error_message": message,
+            "finished_at": func.now(),
+        }
+        if not keep_upload:
+            values["upload_path"] = None
         async with self._session() as session:
             await session.execute(
                 update(TranscriptionRow)
                 .where(TranscriptionRow.id == tid, TranscriptionRow.status.in_(ACTIVE))
-                .values(
-                    status=status,
-                    error_code=code,
-                    error_message=message,
-                    finished_at=func.now(),
-                )
+                .values(values)
             )
 
-    async def fail(self, tid: uuid.UUID, code: str, message: str) -> None:
-        await self._set_final(tid, "failed", code, message)
+    async def fail(
+        self, tid: uuid.UUID, code: str, message: str, *, keep_upload: bool = True
+    ) -> None:
+        """`keep_upload=False` — повтор бессмыслен (битый файл, вызов SDK): путь стирается."""
+        await self._set_final(tid, "failed", code, message, keep_upload=keep_upload)
 
-    async def cancel(self, tid: uuid.UUID) -> None:
-        await self._set_final(tid, "cancelled", None, None)
+    async def cancel(self, tid: uuid.UUID, *, keep_upload: bool = True) -> None:
+        await self._set_final(tid, "cancelled", None, None, keep_upload=keep_upload)
 
     async def requeue(self, tid: uuid.UUID) -> TranscriptionRecord | None:
         async with self._session() as session:

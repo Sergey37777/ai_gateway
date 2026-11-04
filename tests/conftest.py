@@ -1,3 +1,4 @@
+import contextlib
 import copy
 import sys
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
@@ -7,6 +8,7 @@ from typing import Any, Protocol
 
 import httpx
 import pytest
+from fastapi import FastAPI
 from loguru import logger
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -17,7 +19,7 @@ from ai_gateway.config import Settings
 from ai_gateway.db.engine import create_engine
 from ai_gateway.lifecycle import ModelManager
 from ai_gateway.registry import ModelRegistry
-from tests.fakes import FakeOllama, FakeTranscriptionBackend
+from tests.fakes import FakeOllama, FakeTranscriptionBackend, InMemoryTranscriptionStore
 
 # реестр как в models.yaml (спецификация §4.4)
 REGISTRY_DATA: dict[str, Any] = {
@@ -51,6 +53,8 @@ class GatewayClient(httpx.AsyncClient):
 
     backend: FakeTranscriptionBackend
     ollama: FakeOllama
+    store: InMemoryTranscriptionStore
+    app: FastAPI
 
 
 class MakeClient(Protocol):
@@ -69,6 +73,8 @@ class MakeClient(Protocol):
 async def make_client(tmp_path: Path) -> AsyncIterator[MakeClient]:
     clients: list[GatewayClient] = []
     chat_backends: list[OllamaChatBackend] = []
+    # lifespan каждого приложения (воркер, хранилище) закрывается после теста
+    lifespans = contextlib.AsyncExitStack()
 
     async def _make(
         *,
@@ -91,20 +97,28 @@ async def make_client(tmp_path: Path) -> AsyncIterator[MakeClient]:
             max_upload_mb=max_upload_mb,
             # без явного каталога — несуществующий: тесты не зависят от наличия сборки UI
             web_dir=web_dir if web_dir is not None else tmp_path / "no-web",
+            data_dir=tmp_path / f"data-{len(clients)}",
         )
         registry = ModelRegistry.from_dict(copy.deepcopy(REGISTRY_DATA), default_ttl=600)
         factory: Callable[..., FakeTranscriptionBackend] = lambda _spec: fake  # noqa: E731
         manager = ModelManager(registry.whisper_specs(), factory)
-        app = create_app(settings, registry=registry, manager=manager, chat_backend=chat_backend)
+        store = InMemoryTranscriptionStore()
+        app = create_app(
+            settings, registry=registry, manager=manager, chat_backend=chat_backend, store=store
+        )
+        await lifespans.enter_async_context(app.router.lifespan_context(app))
         client = GatewayClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
         client.backend = fake
         client.ollama = fake_ollama
+        client.store = store
+        client.app = app
         clients.append(client)
         return client
 
     yield _make
     for client in clients:
         await client.aclose()
+    await lifespans.aclose()
     for chat_backend in chat_backends:
         await chat_backend.aclose()
 

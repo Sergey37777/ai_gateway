@@ -1,8 +1,11 @@
 from collections.abc import AsyncIterator
 
+import pytest
+
 from ai_gateway.app import create_app
 from ai_gateway.config import Settings
 from ai_gateway.lifecycle import ModelStatus
+from tests.fakes import InMemoryTranscriptionStore
 
 IDS = ["gpt-4o-mini", "qwen3-14b", "whisper-1", "whisper-large-v3", "whisper-large-v3-turbo"]
 
@@ -30,11 +33,29 @@ async def test_health(make_client):
         "status": "ok",
         "device": "cpu",
         "ollama": "ok",
+        "database": "ok",
+        "queue": {"queued": 0, "running": 0},
         "models": [
             {"name": "whisper-large-v3", "loaded": False, "active": 0, "idle_seconds": None},
             {"name": "whisper-large-v3-turbo", "loaded": False, "active": 0, "idle_seconds": None},
         ],
     }
+
+
+async def test_health_database_unavailable(make_client):
+    client = await make_client()
+    client.store.available = False
+    r = await client.get("/health")
+    assert r.status_code == 200
+    assert r.json()["database"] == "unavailable"
+    assert r.json()["queue"] is None
+
+
+async def test_api_prefix_requires_key(make_client):
+    client = await make_client(api_key="secret")
+    r = await client.get("/api/transcriptions")
+    assert r.status_code == 401
+    assert r.json()["error"]["code"] == "invalid_api_key"
 
 
 async def test_health_ollama_unavailable(make_client):
@@ -127,9 +148,12 @@ async def test_lifespan_builds_from_settings(tmp_path):
     models_file.write_text(
         "default_transcription: w\nmodels:\n  w:\n    backend: whisper\n    model: tiny\n"
     )
-    settings = Settings(_env_file=None, device="cpu", models_file=models_file)
-    app = create_app(settings)
+    settings = Settings(
+        _env_file=None, device="cpu", models_file=models_file, data_dir=tmp_path / "data"
+    )
+    app = create_app(settings, store=InMemoryTranscriptionStore())
     async with app.router.lifespan_context(app):
+        assert (tmp_path / "data" / "uploads").is_dir()
         assert app.state.device == "cpu"
         assert app.state.manager.status() == [ModelStatus("w", False, 0, None)]
         assert app.state.registry.resolve(None, "transcription").ttl == 600
@@ -146,8 +170,10 @@ async def test_lifespan_keeps_injected_chat_backend(tmp_path):
         "default_transcription: w\nmodels:\n  w:\n    backend: whisper\n    model: tiny\n"
     )
     injected = OllamaChatBackend("http://ollama", read_timeout=5)
-    settings = Settings(_env_file=None, device="cpu", models_file=models_file)
-    app = create_app(settings, chat_backend=injected)
+    settings = Settings(
+        _env_file=None, device="cpu", models_file=models_file, data_dir=tmp_path / "data"
+    )
+    app = create_app(settings, chat_backend=injected, store=InMemoryTranscriptionStore())
     async with app.router.lifespan_context(app):
         assert app.state.chat_backend is injected
     assert not injected._client.is_closed
@@ -196,3 +222,24 @@ async def test_auth_checked_before_body_is_read(make_client):
     assert r.json()["error"]["code"] == "invalid_api_key"
     assert consumed <= 65536
     assert len(r.headers["X-Request-ID"]) == 32
+
+
+@pytest.mark.postgres
+async def test_lifespan_with_database(tmp_path, postgres_url):
+    from ai_gateway.store import SqlTranscriptionStore
+
+    models_file = tmp_path / "m.yaml"
+    models_file.write_text(
+        "default_transcription: w\nmodels:\n  w:\n    backend: whisper\n    model: tiny\n"
+    )
+    settings = Settings(
+        _env_file=None,
+        device="cpu",
+        models_file=models_file,
+        data_dir=tmp_path / "data",
+        database_url=postgres_url,
+    )
+    app = create_app(settings)
+    async with app.router.lifespan_context(app):
+        assert isinstance(app.state.store, SqlTranscriptionStore)
+        assert await app.state.store.ping()

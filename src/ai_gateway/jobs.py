@@ -50,6 +50,9 @@ DELETE_WAIT = 30.0
 WORKER_IDLE = 30.0
 WORKER_ERROR_PAUSE = 5.0
 
+# повтор этих ошибок бессмыслен — загрузка не хранится
+_NOT_RETRYABLE = frozenset({"invalid_audio", "upload_missing"})
+
 # исход execute: результат, ошибка для клиента синхронного запроса или None (отменено)
 Outcome = TranscriptionResult | GatewayError | None
 
@@ -189,8 +192,17 @@ class TranscriptionService:
             self._runs.pop(record.id, None)
             state.done.set()
 
+    @staticmethod
+    def _keeps_upload(record: TranscriptionRecord, code: str | None) -> bool:
+        """Загрузка хранится ради «Повторить» только у задач UI и только для повторяемых ошибок:
+        вызов SDK повторяет сам клиент, а битый файл повтором не исправить."""
+        return record.source == "ui" and code not in _NOT_RETRYABLE
+
     async def _fail(self, record: TranscriptionRecord, error: GatewayError) -> GatewayError:
-        await self._store.fail(record.id, error.code, error.message)
+        keep = self._keeps_upload(record, error.code)
+        await self._store.fail(record.id, error.code, error.message, keep_upload=keep)
+        if not keep:
+            self._files.remove(record.upload_path)
         return error
 
     async def _execute(self, record: TranscriptionRecord, state: RunState) -> Outcome:
@@ -220,7 +232,10 @@ class TranscriptionService:
                     raise _bad_param("model", f"Модель '{params.model}' не распознаёт речь")
                 result = await run_blocking(backend.transcribe, path, options, hooks)
         except TranscriptionCancelled:
-            await self._store.cancel(record.id)
+            keep = self._keeps_upload(record, None)
+            await self._store.cancel(record.id, keep_upload=keep)
+            if not keep:
+                self._files.remove(record.upload_path)
             return None
         except GatewayError as exc:
             return await self._fail(record, exc)

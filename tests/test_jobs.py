@@ -384,3 +384,22 @@ def test_prepare_params_validation(make_env):
             word_timestamps=False,
         )
     assert info.value.param == "model"
+
+
+async def test_run_sync_failure_removes_upload(make_env):
+    env = make_env(FakeTranscriptionBackend(transcribe_error=RuntimeError("out of memory")))
+    with pytest.raises(GatewayError):
+        await env.service.run_sync(upload(), PARAMS)
+    record = next(iter(env.store.records.values()))
+    assert record.upload_path is None
+    assert list((env.files.root / "uploads").iterdir()) == []
+
+
+async def test_invalid_audio_removes_upload(make_env, worker_for):
+    error = GatewayError(400, "invalid_audio", "не аудио", param="file")
+    env = make_env(FakeTranscriptionBackend(transcribe_error=error))
+    worker_for(env)
+    record = await env.service.submit(upload(), PARAMS, title=None)
+    await env.wait_status(record.id, "failed")
+    assert env.store.records[record.id].upload_path is None
+    assert list((env.files.root / "uploads").iterdir()) == []

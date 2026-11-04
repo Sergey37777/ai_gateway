@@ -346,21 +346,33 @@ class InMemoryTranscriptionStore:
         self.results[tid] = result
 
     async def _final(
-        self, tid: uuid.UUID, status: Status, code: str | None, message: str | None
+        self,
+        tid: uuid.UUID,
+        status: Status,
+        code: str | None,
+        message: str | None,
+        keep_upload: bool,
     ) -> None:
         self._check()
         record = self.records.get(tid)
         if record is None or record.status not in ("queued", "running"):
             return
         self._put(
-            tid, status=status, error_code=code, error_message=message, finished_at=self._now()
+            tid,
+            status=status,
+            error_code=code,
+            error_message=message,
+            finished_at=self._now(),
+            upload_path=record.upload_path if keep_upload else None,
         )
 
-    async def fail(self, tid: uuid.UUID, code: str, message: str) -> None:
-        await self._final(tid, "failed", code, message)
+    async def fail(
+        self, tid: uuid.UUID, code: str, message: str, *, keep_upload: bool = True
+    ) -> None:
+        await self._final(tid, "failed", code, message, keep_upload)
 
-    async def cancel(self, tid: uuid.UUID) -> None:
-        await self._final(tid, "cancelled", None, None)
+    async def cancel(self, tid: uuid.UUID, *, keep_upload: bool = True) -> None:
+        await self._final(tid, "cancelled", None, None, keep_upload)
 
     async def requeue(self, tid: uuid.UUID) -> TranscriptionRecord | None:
         self._check()

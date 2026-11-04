@@ -365,3 +365,27 @@ async def test_upload_spool_released_before_transcription(make_client, monkeypat
     r = await client.post(URL, files=FILES)
     assert r.status_code == 200
     assert events.index("close") < events.index("transcribe")
+
+
+async def test_sync_saved_to_history_source_api(make_client):
+    client = await make_client()
+    r = await client.post(URL, files=FILES)
+    assert r.status_code == 200
+    [record] = client.store.records.values()
+    assert (record.source, record.status, record.filename) == ("api", "done", "a.wav")
+    assert record.params.word_timestamps is False
+
+
+async def test_sync_disconnect_still_saves(make_client):
+    import asyncio
+    import threading
+
+    gate = threading.Event()
+    client = await make_client(backend=FakeTranscriptionBackend(transcribe_gate=gate))
+    request = asyncio.create_task(client.post(URL, files=FILES))
+    await asyncio.to_thread(client.backend.transcribe_started.wait, 2)
+    request.cancel()  # клиент оборвал соединение
+    gate.set()
+    async with asyncio.timeout(3):
+        while not any(r.status == "done" for r in client.store.records.values()):
+            await asyncio.sleep(0.01)

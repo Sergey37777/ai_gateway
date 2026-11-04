@@ -7,8 +7,10 @@ from fastapi import Request
 from ai_gateway.backends.base import ChatBackend
 from ai_gateway.config import Settings
 from ai_gateway.errors import GatewayError
+from ai_gateway.jobs import TranscriptionService
 from ai_gateway.lifecycle import ModelManager
 from ai_gateway.registry import ModelRegistry
+from ai_gateway.store import TranscriptionStore
 
 
 def get_settings(request: Request) -> Settings:
@@ -29,6 +31,16 @@ def get_manager(request: Request) -> ModelManager:
 def get_chat_backend(request: Request) -> ChatBackend:
     backend: ChatBackend = request.app.state.chat_backend
     return backend
+
+
+def get_store(request: Request) -> TranscriptionStore:
+    store: TranscriptionStore = request.app.state.store
+    return store
+
+
+def get_service(request: Request) -> TranscriptionService:
+    service: TranscriptionService = request.app.state.service
+    return service
 
 
 def api_key_valid(authorization: str, expected: str) -> bool:
