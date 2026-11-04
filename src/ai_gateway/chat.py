@@ -2,12 +2,14 @@
 
 Факты проверки Ollama 0.40.8 (этап 2, задача 1), на которых основан модуль:
 1. `keep_alive` в теле запроса принимается, но на этапе 2 не используется.
-2. Рассуждения приходят в поле `reasoning`; `reasoning_effort: "none"` отключает их.
-3. У tool_calls есть `id`/`index`, `finish_reason` корректный (`tool_calls`).
+2. Рассуждения приходят в поле `reasoning` (и в `message`, и в `delta`); шлюз переименовывает
+   его в `reasoning_content`. `reasoning_effort: "none"` отключает рассуждения.
+3. Нормализация tool_calls не нужна: Ollama 0.40.8 сама отдаёт `id`/`index`/`type`,
+   а `finish_reason` равен `tool_calls`.
 4. `stream_options.include_usage` работает (usage-чанк перед `[DONE]`).
-5. Роль `developer` принимается без ошибки, но малая модель её игнорирует,
-   поэтому она заменяется на `system`.
-6. Ошибки приходят в формате OpenAI; нехватка памяти — HTTP 500 `api_error`.
+5. Роль `developer` Ollama принимает без ошибки, но шлюз заменяет её на `system`.
+6. Ошибки приходят в формате OpenAI; нехватка памяти (OOM) — HTTP 500 `api_error` с текстом
+   "llama-server process has terminated: signal: killed" / "unexpected EOF".
 
 Остальные поля запроса (temperature, tools, stream_options, ...) передаются как есть.
 """
@@ -76,3 +78,48 @@ def normalize_request(request: ChatCompletionRequest, spec: OllamaSpec) -> JsonO
         if isinstance(message, dict) and message.get("role") == "developer":
             message["role"] = "system"
     return payload
+
+
+def _normalize_reasoning(holder: JsonObject) -> None:
+    """`reasoning` → `reasoning_content`; уже существующее `reasoning_content` не трогаем."""
+    if "reasoning" not in holder:
+        return
+    reasoning = holder.pop("reasoning")
+    holder.setdefault("reasoning_content", reasoning)
+
+
+def _normalize_choices(body: JsonObject, field: str) -> None:
+    choices = body.get("choices")
+    if not isinstance(choices, list):
+        return
+    for choice in choices:
+        if isinstance(choice, dict):
+            holder = choice.get(field)
+            if isinstance(holder, dict):
+                _normalize_reasoning(holder)
+
+
+def normalize_completion(body: JsonObject, spec: OllamaSpec) -> JsonObject:
+    """Ответ Ollama → ответ шлюза: имя модели из реестра, `reasoning_content`.
+
+    Объект изменяется на месте и возвращается.
+    """
+    body["model"] = spec.name
+    _normalize_choices(body, "message")
+    return body
+
+
+class ChunkNormalizer:
+    """Нормализация чанков стрима; те же правила, что у `normalize_completion`, но для `delta`.
+
+    Состояния не требуется: Ollama сама выдаёт стабильные id у tool_calls.
+    Чанк изменяется на месте и возвращается.
+    """
+
+    def __init__(self, spec: OllamaSpec) -> None:
+        self._spec = spec
+
+    def __call__(self, chunk: JsonObject) -> JsonObject:
+        chunk["model"] = self._spec.name
+        _normalize_choices(chunk, "delta")
+        return chunk

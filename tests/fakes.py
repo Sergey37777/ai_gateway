@@ -1,9 +1,13 @@
 """Тестовые двойники: управляемые часы и бэкенд распознавания без реальной модели."""
 
+import json
 import threading
+from collections.abc import AsyncIterator
 from pathlib import Path
 
-from ai_gateway.backends.base import Segment, TranscriptionOptions, TranscriptionResult
+import httpx
+
+from ai_gateway.backends.base import JsonObject, Segment, TranscriptionOptions, TranscriptionResult
 from ai_gateway.registry import WhisperSpec
 
 
@@ -104,3 +108,82 @@ class FakeLoadableBackend:
 
     def unload(self) -> None:
         self._loaded = False
+
+
+FIXTURES_DIR = Path(__file__).parent / "fixtures" / "ollama"
+
+
+class TrackingStream(httpx.AsyncByteStream):
+    """SSE-поток кусками по 64 байта с признаком закрытия и обрывом после N кусков."""
+
+    def __init__(self, data: bytes, *, fail_after: int | None = None) -> None:
+        self.data = data
+        self.fail_after = fail_after
+        self.closed = False
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        for number, start in enumerate(range(0, len(self.data), 64)):
+            if self.fail_after is not None and number >= self.fail_after:
+                raise httpx.RemoteProtocolError("поток оборван")
+            yield self.data[start : start + 64]
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+def load_ollama_fixture(name: str) -> httpx.Response:
+    """Ответ Ollama из `tests/fixtures/ollama/<name>.json|.sse`."""
+    json_path = FIXTURES_DIR / f"{name}.json"
+    if json_path.exists():
+        recorded = json.loads(json_path.read_text(encoding="utf-8"))
+        status = recorded["status"]
+        body = recorded["body"]
+        if isinstance(body, str):
+            return httpx.Response(status, text=body)
+        return httpx.Response(status, json=body)
+    data = (FIXTURES_DIR / f"{name}.sse").read_bytes()
+    return httpx.Response(
+        200, headers={"content-type": "text/event-stream"}, stream=TrackingStream(data)
+    )
+
+
+def parse_sse(data: bytes) -> list[JsonObject]:
+    """Разбор SSE-фикстуры в JSON-чанки (без `[DONE]`)."""
+    chunks: list[JsonObject] = []
+    for line in data.decode("utf-8").splitlines():
+        if line.startswith("data:"):
+            payload = line.removeprefix("data:").strip()
+            if payload and payload != "[DONE]":
+                chunks.append(json.loads(payload))
+    return chunks
+
+
+class FakeOllama:
+    """Фейк Ollama поверх `httpx.MockTransport` с очередью ответов."""
+
+    def __init__(self, *, up: bool = True) -> None:
+        self.up = up
+        self.requests: list[JsonObject] = []
+        self._queue: list[httpx.Response | Exception] = []
+        self.transport = httpx.MockTransport(self._handle)
+
+    def queue(self, item: httpx.Response | Exception) -> None:
+        self._queue.append(item)
+
+    def queue_fixture(self, name: str) -> None:
+        self.queue(load_ollama_fixture(name))
+
+    def _handle(self, request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/version":
+            if not self.up:
+                raise httpx.ConnectError("Ollama недоступна", request=request)
+            return httpx.Response(200, json={"version": "test"})
+        if request.url.path == "/v1/chat/completions":
+            self.requests.append(json.loads(request.content))
+            if not self._queue:
+                raise httpx.ConnectError("очередь ответов пуста", request=request)
+            item = self._queue.pop(0)
+            if isinstance(item, Exception):
+                raise item
+            return item
+        return httpx.Response(404)
