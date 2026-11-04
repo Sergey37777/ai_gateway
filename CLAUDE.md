@@ -24,15 +24,16 @@ Roadmap: этап 2 — бэкенд Ollama + `/v1/chat/completions` (SSE); эт
 
 ## Команды
 
-Стек: Python 3.12, Poetry, FastAPI, faster-whisper, loguru, pytest.
+Стек: Python 3.12 (`.python-version`, uv ставит его сам), uv, FastAPI, faster-whisper, loguru, pytest.
+Зависимости — только через `uv add` / `uv add --dev`; `uv.lock` коммитится.
 
 ```bash
-poetry install
-poetry run uvicorn ai_gateway.main:app --reload          # локальный запуск (CPU)
-poetry run pytest                                        # юнит- и API-тесты (без моделей и GPU)
-poetry run pytest tests/test_lifecycle.py::test_name     # один тест
-poetry run pytest -m integration                         # реальный whisper `tiny` на CPU + OpenAI SDK
-poetry run ruff check . && poetry run ruff format .
+uv sync
+uv run uvicorn ai_gateway.main:app --reload              # локальный запуск (CPU)
+uv run pytest                                            # юнит- и API-тесты (без моделей и GPU)
+uv run pytest tests/test_lifecycle.py::test_name         # один тест
+uv run pytest -m integration                             # реальный whisper `tiny` на CPU + OpenAI SDK
+uv run ruff check . && uv run ruff format .
 docker compose up --build                                # на целевой машине с GPU
 ```
 
@@ -42,8 +43,8 @@ docker compose up --build                                # на целевой �
 `whisper-1` → модель по умолчанию) → `ModelManager.acquire()` → бэкенд → `formatting.render()`.
 
 - **`backends/`** — бэкенды реализуют протоколы из `backends/base.py`
-  (`load`/`unload` + `transcribe`). Новый тип модели = новый класс + запись в фабрике бэкендов
-  в `registry.py` + записи в `models.yaml`; существующий код при этом не меняется.
+  (`load`/`unload` + `transcribe`). Новый тип модели = новый класс + запись в `build_backend()`
+  (`backends/__init__.py`) + расширение `ModelSpec.backend` + записи в `models.yaml`; существующий код при этом не меняется.
 - **`lifecycle.py` / `ModelManager`** — единственное место, которое управляет VRAM:
   ленивая загрузка под per-model lock, `asyncio.Semaphore(max_concurrency)` на модель,
   фоновая выгрузка по TTL (`-1` — никогда, `0` — сразу после запроса). Счётчик `active`

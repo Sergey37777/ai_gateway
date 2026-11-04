@@ -60,7 +60,9 @@
 
 ```
 ai_gateway/
-├── pyproject.toml            # Poetry, Python 3.12
+├── pyproject.toml            # uv (PEP 621 + dependency-groups), сборка uv_build
+├── uv.lock
+├── .python-version           # 3.12
 ├── Dockerfile
 ├── docker-compose.yml
 ├── models.yaml               # реестр моделей (GPU)
@@ -96,7 +98,8 @@ ai_gateway/
 ```
 
 Python **3.12** (а не 3.13 как в `simple_ai_agent`) — самые надёжные готовые колёса CUDA-стека
-(ctranslate2 и пр.); в Ubuntu 24.04 он системный.
+(ctranslate2 и пр.); в Ubuntu 24.04 он системный. Менеджер пакетов — **uv**: на Mac он сам ставит
+Python 3.12 по `.python-version`, в Docker использует системный.
 
 ### 3.2. Поток запроса
 
@@ -286,10 +289,12 @@ pytest + pytest-asyncio + httpx (`ASGITransport`). Тесты 1–3 не тре�
 ## 8. Docker
 
 ### 8.1. `Dockerfile` (multi-stage)
-- **builder:** тот же базовый CUDA-образ (одинаковые пути и ABI Python), Poetry ставит
-  только основные зависимости в `/opt/venv`.
+- **builder:** тот же базовый CUDA-образ (одинаковые пути и ABI Python), бинарник uv копируется
+  из `ghcr.io/astral-sh/uv:<точная версия>`; `uv sync --locked --no-dev --no-editable` ставит
+  зависимости и сам пакет в `/opt/venv` (`UV_PROJECT_ENVIRONMENT`), используя системный Python
+  (`UV_PYTHON_DOWNLOADS=never`).
 - **runtime:** `nvidia/cuda:12.x-cudnn-runtime-ubuntu24.04` (CUDA 12 + cuDNN 9 для CTranslate2;
-  точный тег проверяется при реализации), системный Python 3.12, копируется `/opt/venv` и `src/`.
+  точный тег проверяется при реализации), системный Python 3.12, копируется только `/opt/venv` (uv в рантайме не нужен).
 - Непривилегированный пользователь `app`, `HF_HOME=/home/app/.cache/huggingface`.
 - `CMD uvicorn ai_gateway.main:app --host 0.0.0.0 --port 8000 --workers 1` —
   **ровно один воркер**, иначе каждый загрузит свою копию модели в VRAM.
@@ -307,7 +312,7 @@ pytest + pytest-asyncio + httpx (`ASGITransport`). Тесты 1–3 не тре�
 - `.gitattributes` (`eol=lf`) исключает проблемы с CRLF.
 
 ### 8.4. Mac (разработка)
-Без Docker: `poetry install && poetry run uvicorn ai_gateway.main:app --reload`, в `.env` —
+Без Docker: `uv sync && uv run uvicorn ai_gateway.main:app --reload`, в `.env` —
 `AIGW_DEVICE=cpu` и `AIGW_MODELS_FILE=models.dev.yaml` (в репозитории; модели `tiny` и `base`,
 алиас `whisper-1` → `base`).
 
@@ -315,7 +320,7 @@ pytest + pytest-asyncio + httpx (`ASGITransport`). Тесты 1–3 не тре�
 
 Основные: `fastapi`, `uvicorn[standard]`, `python-multipart`, `pydantic-settings`, `pyyaml`,
 `faster-whisper`, `loguru`.
-Dev: `pytest`, `pytest-asyncio`, `httpx`, `openai`, `ruff`.
+Dev (`[dependency-groups] dev`): `pytest`, `pytest-asyncio`, `httpx`, `openai`, `ruff`.
 
 ## 10. Вне рамок этапа 1
 

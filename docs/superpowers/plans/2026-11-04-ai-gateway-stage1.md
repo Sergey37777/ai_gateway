@@ -6,14 +6,15 @@
 
 **Architecture:** `api/*` → `ModelRegistry.resolve()` (имя/алиас → `ModelSpec`) → `ModelManager.acquire()` (загрузка, семафор, TTL) → `WhisperBackend.transcribe()` в `asyncio.to_thread` → `formatting.render()`. Все ошибки — `GatewayError` в формате OpenAI. Приложение собирается фабрикой `create_app()` с возможностью внедрить реестр/менеджер (для тестов с фейковым бэкендом).
 
-**Tech Stack:** Python 3.12, Poetry, FastAPI, uvicorn, python-multipart, pydantic-settings, PyYAML, faster-whisper, loguru; pytest, pytest-asyncio, httpx, openai, ruff; Docker (`nvidia/cuda` + cuDNN 9).
+**Tech Stack:** Python 3.12, uv, FastAPI, uvicorn, python-multipart, pydantic-settings, PyYAML, faster-whisper, loguru; pytest, pytest-asyncio, httpx, openai, ruff; Docker (`nvidia/cuda` + cuDNN 9).
 
 **Spec:** `docs/superpowers/specs/2026-11-04-ai-gateway-stage1-design.md`
 
 ## Global Constraints
 
-- Python: в Docker — системный 3.12 Ubuntu 24.04; `requires-python = ">=3.12,<3.14"` (чтобы на Mac работал и 3.13).
-- Пакет — src-layout: `src/ai_gateway`, Poetry `packages = [{ include = "ai_gateway", from = "src" }]`.
+- Python 3.12 везде: `.python-version` = `3.12` (uv ставит его на Mac сам), в Docker — системный 3.12 Ubuntu 24.04; `requires-python = ">=3.12"`.
+- Менеджер — **uv**: зависимости только через `uv add` / `uv add --dev` (группа `dev` в `[dependency-groups]`), `uv.lock` коммитится, все команды — через `uv run`.
+- Пакет — src-layout `src/ai_gateway`, build-backend `uv_build` (по умолчанию ищет `src/ai_gateway` для имени `ai-gateway`).
 - Env-префикс `AIGW_`; значения по умолчанию — ровно из таблицы спецификации §4.5.
 - Формат ошибок: `{"error": {"message", "type", "param", "code"}}`; коды и статусы — ровно из таблицы §6.
 - uvicorn — строго `--workers 1`.
@@ -35,7 +36,7 @@
 ### Task 1: Каркас проекта и конфигурация
 
 **Files:**
-- Create: `pyproject.toml`, `src/ai_gateway/__init__.py`, `src/ai_gateway/config.py`, `tests/__init__.py`, `tests/test_config.py`
+- Create: `pyproject.toml`, `uv.lock`, `.python-version`, `src/ai_gateway/__init__.py`, `src/ai_gateway/config.py`, `tests/__init__.py`, `tests/test_config.py`
 
 **Interfaces:**
 - Produces:
@@ -44,14 +45,15 @@
   - `def resolve_compute_type(compute_type: str, device: str) -> str`
   - `def detect_cuda_device_count() -> int` — ленивый `import ctranslate2`, `ctranslate2.get_cuda_device_count()`; при `ImportError` → 0.
 
-- [ ] **Step 1: Создать `pyproject.toml` и установить зависимости**
-
-`[project]`: `name = "ai-gateway"`, `version = "0.1.0"`, `requires-python = ">=3.12,<3.14"`, автор `Sergey Lyapin`. `[tool.poetry] packages = [{ include = "ai_gateway", from = "src" }]`. Затем:
+- [ ] **Step 1: Инициализировать проект uv и установить зависимости**
 
 ```bash
-poetry add fastapi "uvicorn[standard]" python-multipart pydantic-settings pyyaml faster-whisper loguru
-poetry add --group dev pytest pytest-asyncio httpx openai ruff
+uv init --package --name ai-gateway --python 3.12 --build-backend uv --vcs none --no-readme .
+uv add fastapi "uvicorn[standard]" python-multipart pydantic-settings pyyaml faster-whisper loguru
+uv add --dev pytest pytest-asyncio httpx openai ruff
 ```
+
+В `pyproject.toml` поправить: `requires-python = ">=3.12"`, `description`, автор `Sergey Lyapin`; убрать сгенерированный `main()`/`[project.scripts]`, если `uv init` их создал. `.gitignore` не перезаписывать.
 
 Секции инструментов:
 
@@ -72,7 +74,7 @@ src = ["src", "tests"]
 select = ["E", "F", "I", "UP", "B", "ASYNC"]
 ```
 
-Проверка: `poetry run python -c "import ai_gateway"` — без ошибок.
+Проверка: `uv run python -c "import ai_gateway"` — без ошибок; `uv run python --version` — 3.12.x.
 
 - [ ] **Step 2: Написать падающие тесты `tests/test_config.py`**
 
@@ -95,10 +97,10 @@ def test_resolve_device(device, count, expected): ...
 def test_resolve_compute_type(ct, device, expected): ...
 ```
 
-- [ ] **Step 3: Запустить — FAIL** (`poetry run pytest tests/test_config.py -v` → `ImportError`)
+- [ ] **Step 3: Запустить — FAIL** (`uv run pytest tests/test_config.py -v` → `ImportError`)
 - [ ] **Step 4: Реализовать `config.py`** по Interfaces.
-- [ ] **Step 5: Запустить — PASS**; `poetry run ruff check . && poetry run ruff format --check .` — чисто.
-- [ ] **Step 6: Commit** — `chore: каркас проекта и конфигурация (Settings)` (включая `poetry.lock`).
+- [ ] **Step 5: Запустить — PASS**; `uv run ruff check . && uv run ruff format --check .` — чисто.
+- [ ] **Step 6: Commit** — `chore: каркас проекта и конфигурация (Settings)` (включая `uv.lock` и `.python-version`).
 
 ---
 
@@ -254,7 +256,7 @@ async def test_unknown_name_raises_404():       # acquire("nope") → GatewayErr
 
 - [ ] **Step 2: Запустить — FAIL**
 - [ ] **Step 3: Реализовать `tests/fakes.py` и `lifecycle.py`** по Interfaces.
-- [ ] **Step 4: Запустить — PASS** (`poetry run pytest tests/test_lifecycle.py -v`), ruff чисто.
+- [ ] **Step 4: Запустить — PASS** (`uv run pytest tests/test_lifecycle.py -v`), ruff чисто.
 - [ ] **Step 5: Commit** — `feat: ModelManager — ленивая загрузка и выгрузка по TTL`
 
 ---
@@ -324,7 +326,7 @@ async def test_lifespan_builds_from_settings(tmp_path):
 
 - [ ] **Step 3: Запустить — FAIL**
 - [ ] **Step 4: Реализовать `app.py`, `main.py`, `api/*`, `install_error_handlers`, `tests/conftest.py`** по Interfaces.
-- [ ] **Step 5: Запустить весь набор — PASS** (`poetry run pytest -v`), ruff чисто.
+- [ ] **Step 5: Запустить весь набор — PASS** (`uv run pytest -v`), ruff чисто.
 - [ ] **Step 6: Commit** — `feat: HTTP API — /v1/audio/transcriptions, /v1/models, /health`
 
 ---
@@ -375,8 +377,8 @@ async def test_openai_sdk_verbose_words():   # model="whisper-tiny", response_fo
 async def test_garbage_audio_is_400():       # httpx: файл b"not audio at all" * 100 → 400 "invalid_audio"
 ```
 
-- [ ] **Step 5: Запустить** `poetry run pytest -m integration -v` — PASS (первый запуск качает `tiny`/`base`, ~200 МБ). Затем `poetry run pytest` — интеграционные пропущены, остальное PASS.
-- [ ] **Step 6: Ручной smoke-тест на Mac**: `.env` с `AIGW_DEVICE=cpu`, `AIGW_MODELS_FILE=models.dev.yaml`, `AIGW_DEFAULT_TTL=60`, `AIGW_SWEEP_INTERVAL=10`; `poetry run uvicorn ai_gateway.main:app`; `curl -F file=@tests/fixtures/hello.wav -F model=whisper-1 http://localhost:8000/v1/audio/transcriptions` → JSON с текстом; через ~70 с в логе `Модель whisper-base выгружена`.
+- [ ] **Step 5: Запустить** `uv run pytest -m integration -v` — PASS (первый запуск качает `tiny`/`base`, ~200 МБ). Затем `uv run pytest` — интеграционные пропущены, остальное PASS.
+- [ ] **Step 6: Ручной smoke-тест на Mac**: `.env` с `AIGW_DEVICE=cpu`, `AIGW_MODELS_FILE=models.dev.yaml`, `AIGW_DEFAULT_TTL=60`, `AIGW_SWEEP_INTERVAL=10`; `uv run uvicorn ai_gateway.main:app`; `curl -F file=@tests/fixtures/hello.wav -F model=whisper-1 http://localhost:8000/v1/audio/transcriptions` → JSON с текстом; через ~70 с в логе `Модель whisper-base выгружена`.
 - [ ] **Step 7: Commit** — `feat: WhisperBackend на faster-whisper + интеграционный тест через OpenAI SDK`
 
 ---
@@ -392,14 +394,14 @@ async def test_garbage_audio_is_400():       # httpx: файл b"not audio at al
 
 - [ ] **Step 1: Выбрать тег базового образа**: `docker manifest inspect nvidia/cuda:12.6.3-cudnn-runtime-ubuntu24.04` (если не существует — ближайший `12.x-cudnn-runtime-ubuntu24.04` с cuDNN 9, требования CTranslate2 — в README faster-whisper). Записать выбранный тег в обе стадии `Dockerfile`.
 - [ ] **Step 2: `Dockerfile`** (multi-stage):
-  - **builder:** выбранный образ; `apt-get install python3.12 python3.12-venv`; `python3.12 -m venv /opt/poetry && /opt/poetry/bin/pip install poetry`; `python3.12 -m venv /opt/venv`; `COPY pyproject.toml poetry.lock /app/`; `VIRTUAL_ENV=/opt/venv /opt/poetry/bin/poetry install --only main --no-root --no-interaction`.
-  - **runtime:** тот же образ; `apt-get install python3.12` (без `-venv`), очистка apt-кэша; `useradd -m app`; `COPY --from=builder /opt/venv /opt/venv`; `COPY src /app/src`; `COPY models.yaml /app/models.yaml`; `ENV PATH=/opt/venv/bin:$PATH PYTHONPATH=/app/src HF_HOME=/home/app/.cache/huggingface PYTHONUNBUFFERED=1`; `WORKDIR /app`; `USER app`; `EXPOSE 8000`; `CMD ["uvicorn", "ai_gateway.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]`.
+  - **builder:** выбранный образ; `apt-get install python3.12`; `COPY --from=ghcr.io/astral-sh/uv:<точная текущая версия> /uv /bin/uv` (версию взять из `uv --version` на Mac, не `latest`); `ENV UV_PROJECT_ENVIRONMENT=/opt/venv UV_PYTHON_DOWNLOADS=never UV_PYTHON=python3.12 UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy`; `WORKDIR /app`; `COPY pyproject.toml uv.lock .python-version /app/`; `uv sync --locked --no-dev --no-install-project` (слой зависимостей кэшируется); `COPY src /app/src`; `uv sync --locked --no-dev --no-editable`.
+  - **runtime:** тот же образ; `apt-get install python3.12` (без `-venv`), очистка apt-кэша; `useradd -m app`; `COPY --from=builder /opt/venv /opt/venv`; `COPY models.yaml /app/models.yaml`; `ENV PATH=/opt/venv/bin:$PATH HF_HOME=/home/app/.cache/huggingface PYTHONUNBUFFERED=1`; `WORKDIR /app`; `USER app`; `EXPOSE 8000`; `CMD ["uvicorn", "ai_gateway.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]`.
   - `.dockerignore`: `.git`, `.venv`, `tests`, `docs`, `.env`, `__pycache__`, `*.pyc`.
 - [ ] **Step 3: `docker-compose.yml`** — сервис `gateway` ровно по §8.2 спецификации; healthcheck: `["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]`, `interval: 30s`, `timeout: 5s`, `start_period: 30s`; volume `hf-cache` объявлен на верхнем уровне. Каталог `/home/app/.cache/huggingface` создаётся в Dockerfile от пользователя `app`, чтобы volume унаследовал владельца.
 - [ ] **Step 4: `.env.example`** — все переменные §4.5 со значениями по умолчанию, `AIGW_API_KEY` закомментирован.
 - [ ] **Step 5: Проверить конфигурацию**: `docker compose config -q` — без ошибок. Если Docker на Mac доступен: `docker buildx build --platform linux/amd64 -t ai-gateway:test .` — сборка проходит (рантайм с GPU на Mac не проверяется).
 - [ ] **Step 6: `README.md`** (на русском): назначение и эндпоинты; запуск на Mac (Task 6 Step 6); развёртывание на Windows — Docker Desktop с WSL2-бэкендом, драйвер NVIDIA, проверка `docker run --rm --gpus all nvidia/cuda:<тег base> nvidia-smi`, `copy .env.example .env`, `docker compose up -d --build`; пример вызова через OpenAI SDK (`base_url="http://<host>:8000/v1"`, `model="whisper-1"`) и curl; описание `models.yaml` и TTL; **чек-лист GPU** из спецификации §7.6: `docker compose exec gateway nvidia-smi` видит карту; первый запрос — в логе `Устройство: cuda, compute_type: float16` и время загрузки; повторный запрос заметно быстрее; после TTL — `Модель … выгружена` и падение памяти в `nvidia-smi`.
-- [ ] **Step 7: Финальная проверка**: `poetry run pytest -v` и `poetry run ruff check . && poetry run ruff format --check .` — всё зелёное; сверить команды в `CLAUDE.md` с реальными.
+- [ ] **Step 7: Финальная проверка**: `uv run pytest -v` и `uv run ruff check . && uv run ruff format --check .` — всё зелёное; сверить команды в `CLAUDE.md` с реальными.
 - [ ] **Step 8: Commit** — `chore: Dockerfile, docker-compose и README для развёртывания на Windows + NVIDIA`
 
 ---
