@@ -19,6 +19,10 @@ from ai_gateway.backends.base import (
 )
 from ai_gateway.errors import GatewayError
 
+# temperature=0 в OpenAI означает «повышать температуру, пока не пройдут пороги»;
+# у faster-whisper это расписание по умолчанию (повтор сегмента при сбое порогов)
+FALLBACK_TEMPERATURES: tuple[float, ...] = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
+
 
 class WhisperBackend:
     """Модель faster-whisper; веса грузятся в `load()`, не в конструкторе."""
@@ -64,7 +68,7 @@ class WhisperBackend:
                 str(audio_path),
                 language=options.language or None,
                 initial_prompt=options.prompt or None,
-                temperature=options.temperature,
+                temperature=options.temperature or FALLBACK_TEMPERATURES,
                 word_timestamps=options.word_timestamps,
                 vad_filter=self._vad_filter,
             )

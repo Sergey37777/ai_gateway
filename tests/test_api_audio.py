@@ -1,3 +1,4 @@
+from collections.abc import AsyncIterator
 from dataclasses import replace
 from typing import Any
 
@@ -258,3 +259,48 @@ async def test_temp_file_content_passed_to_backend(make_client):
     r = await client.post(URL, files=FILES)
     assert r.status_code == 200
     assert seen == [b"RIFF...."]
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "cuBLAS failed with status CUBLAS_STATUS_ALLOC_FAILED",
+        "cuDNN failed with status CUDNN_STATUS_ALLOC_FAILED",
+    ],
+)
+async def test_gpu_alloc_failure_during_transcribe_is_503(make_client, message):
+    client = await make_client(
+        backend=FakeTranscriptionBackend(transcribe_error=RuntimeError(message))
+    )
+    r = await client.post(URL, files=FILES)
+    assert r.status_code == 503
+    assert r.headers["Retry-After"] == "30"
+    assert _error(r)["code"] == "model_unavailable"
+
+
+async def test_chunked_upload_stops_at_limit(make_client):
+    # без Content-Length (chunked) лимит считается по фактически прочитанным байтам:
+    # тело дальше лимита не читается и не пишется на диск
+    client = await make_client(max_upload_mb=1)
+    chunk = b"x" * 65536
+    total_chunks = 20 * 16  # 20 МиБ
+    consumed = 0
+
+    async def body() -> AsyncIterator[bytes]:
+        nonlocal consumed
+        yield (
+            b'--xyz\r\nContent-Disposition: form-data; name="file"; filename="a.wav"\r\n'
+            b"Content-Type: audio/wav\r\n\r\n"
+        )
+        for _ in range(total_chunks):
+            consumed += len(chunk)
+            yield chunk
+        yield b"\r\n--xyz--\r\n"
+
+    r = await client.post(
+        URL, content=body(), headers={"Content-Type": "multipart/form-data; boundary=xyz"}
+    )
+    assert r.status_code == 413
+    assert _error(r)["code"] == "file_too_large"
+    assert consumed <= 3 * 1024 * 1024
+    assert client.backend.load_calls == 0

@@ -122,7 +122,8 @@ def test_transcribe_kwargs():
     assert model.transcribe_kwargs == {
         "language": "ru",
         "initial_prompt": None,
-        "temperature": 0.0,
+        # temperature=0 — как у OpenAI: расписание с повышением при сбое порогов
+        "temperature": (0.0, 0.2, 0.4, 0.6, 0.8, 1.0),
         "word_timestamps": False,
         "vad_filter": True,
     }
@@ -135,6 +136,12 @@ def test_transcribe_vad_from_config():
     assert kwargs["vad_filter"] is False
     assert kwargs["initial_prompt"] == "p"
     assert kwargs["language"] is None
+
+
+def test_transcribe_fixed_temperature():
+    backend = _loaded()
+    backend.transcribe(Path("a.wav"), TranscriptionOptions(temperature=0.4))
+    assert FakeWhisperModel.instances[0].transcribe_kwargs["temperature"] == 0.4
 
 
 def test_transcribe_not_loaded():

@@ -31,6 +31,15 @@ def file_too_large(max_upload_mb: int) -> GatewayError:
     )
 
 
+# признаки нехватки памяти GPU в ошибках CTranslate2 / cuBLAS / cuDNN
+_OOM_MARKERS = ("out of memory", "alloc_failed")
+
+
+def _is_gpu_oom(exc: RuntimeError) -> bool:
+    text = str(exc).lower()
+    return any(marker in text for marker in _OOM_MARKERS)
+
+
 def _bad_param(param: str, message: str) -> GatewayError:
     return GatewayError(400, "invalid_request_error", message, param=param)
 
@@ -91,7 +100,7 @@ async def create_transcription(
             try:
                 result = await asyncio.to_thread(backend.transcribe, path, options)
             except RuntimeError as exc:
-                if "out of memory" in str(exc).lower():
+                if _is_gpu_oom(exc):
                     raise model_unavailable(f"Модели {spec.name} не хватило памяти: {exc}") from exc
                 raise
         logger.info(

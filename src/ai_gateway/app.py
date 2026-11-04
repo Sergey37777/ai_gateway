@@ -80,9 +80,11 @@ class RequestContextMiddleware:
 
 
 class UploadSizeGuardMiddleware:
-    """Отклоняет слишком большие загрузки по `Content-Length`, не читая тело.
+    """Ограничивает размер тела загрузки, не дочитывая лишнее.
 
-    Нужен именно middleware: FastAPI разбирает multipart до эндпоинта и зависимостей.
+    Нужен именно middleware: FastAPI разбирает multipart (и пишет файл на диск) до эндпоинта
+    и зависимостей. При известном `Content-Length` отказ сразу; при chunked-передаче байты
+    считаются по мере чтения, и при превышении клиент получает 413, а приложение — disconnect.
     """
 
     def __init__(self, app: ASGIApp, *, max_upload_mb: int) -> None:
@@ -91,18 +93,51 @@ class UploadSizeGuardMiddleware:
         # запас 1 МиБ на multipart-обвязку и остальные поля формы
         self.max_body = max_upload_mb * MIB + MIB
 
+    async def _reject(self, scope: Scope, receive: Receive, send: Send) -> None:
+        response = error_response(audio.file_too_large(self.max_upload_mb))
+        await response(scope, receive, send)
+
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if (
+        if not (
             scope["type"] == "http"
             and scope["method"] == "POST"
             and scope["path"] == TRANSCRIPTIONS_PATH
         ):
-            raw = dict(scope["headers"]).get(b"content-length")
-            if raw is not None and raw.isdigit() and int(raw) > self.max_body:
-                response = error_response(audio.file_too_large(self.max_upload_mb))
-                await response(scope, receive, send)
-                return
-        await self.app(scope, receive, send)
+            await self.app(scope, receive, send)
+            return
+
+        raw = dict(scope["headers"]).get(b"content-length")
+        if raw is not None and raw.isdigit() and int(raw) > self.max_body:
+            await self._reject(scope, receive, send)
+            return
+
+        received = 0
+        rejected = False
+
+        async def counting_receive() -> Message:
+            nonlocal received, rejected
+            if rejected:
+                return {"type": "http.disconnect"}
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > self.max_body:
+                    rejected = True
+                    await self._reject(scope, receive, send)
+                    # приложение видит обрыв соединения и прекращает разбор тела
+                    return {"type": "http.disconnect"}
+            return message
+
+        async def guarded_send(message: Message) -> None:
+            # ответ 413 уже отправлен — всё, что после него пишет приложение, отбрасывается
+            if not rejected:
+                await send(message)
+
+        try:
+            await self.app(scope, counting_receive, guarded_send)
+        except Exception:
+            if not rejected:
+                raise
 
 
 def create_app(
