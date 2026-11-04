@@ -4,6 +4,7 @@ import secrets
 
 from fastapi import Request
 
+from ai_gateway.backends.base import ChatBackend
 from ai_gateway.config import Settings
 from ai_gateway.errors import GatewayError
 from ai_gateway.lifecycle import ModelManager
@@ -23,6 +24,11 @@ def get_registry(request: Request) -> ModelRegistry:
 def get_manager(request: Request) -> ModelManager:
     manager: ModelManager = request.app.state.manager
     return manager
+
+
+def get_chat_backend(request: Request) -> ChatBackend:
+    backend: ChatBackend = request.app.state.chat_backend
+    return backend
 
 
 def api_key_valid(authorization: str, expected: str) -> bool:

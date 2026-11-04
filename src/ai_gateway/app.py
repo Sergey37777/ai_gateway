@@ -11,9 +11,11 @@ from fastapi import FastAPI
 from loguru import logger
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from ai_gateway.api import audio, health, models
+from ai_gateway.api import audio, chat, health, models
 from ai_gateway.api.deps import api_key_valid, invalid_api_key
 from ai_gateway.backends import build_backend
+from ai_gateway.backends.base import ChatBackend
+from ai_gateway.backends.ollama import OllamaChatBackend
 from ai_gateway.config import (
     Settings,
     detect_cuda_device_count,
@@ -25,6 +27,8 @@ from ai_gateway.lifecycle import ModelManager
 from ai_gateway.registry import ModelRegistry
 
 TRANSCRIPTIONS_PATH = "/v1/audio/transcriptions"
+CHAT_PATH = "/v1/chat/completions"
+GUARDED_PATHS = frozenset({TRANSCRIPTIONS_PATH, CHAT_PATH})
 MIB = 1024 * 1024
 LOG_FORMAT = (
     "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | "
@@ -121,14 +125,17 @@ class UploadSizeGuardMiddleware:
         self.max_body = max_upload_mb * MIB + MIB
 
     async def _reject(self, scope: Scope, receive: Receive, send: Send) -> None:
-        response = error_response(audio.file_too_large(self.max_upload_mb))
+        error = (
+            chat.request_too_large(self.max_upload_mb)
+            if scope["path"] == CHAT_PATH
+            else audio.file_too_large(self.max_upload_mb)
+        )
+        response = error_response(error)
         await response(scope, receive, send)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if not (
-            scope["type"] == "http"
-            and scope["method"] == "POST"
-            and scope["path"] == TRANSCRIPTIONS_PATH
+            scope["type"] == "http" and scope["method"] == "POST" and scope["path"] in GUARDED_PATHS
         ):
             await self.app(scope, receive, send)
             return
@@ -172,6 +179,7 @@ def create_app(
     *,
     registry: ModelRegistry | None = None,
     manager: ModelManager | None = None,
+    chat_backend: ChatBackend | None = None,
 ) -> FastAPI:
     """Фабрика приложения; реестр и менеджер можно внедрить (тесты с фейковым бэкендом)."""
     settings = settings if settings is not None else Settings()
@@ -193,6 +201,13 @@ def create_app(
             lambda spec: build_backend(spec, device=device, compute_type=compute_type),
         )
         app.state.registry, app.state.manager = reg, mgr
+        # закрываем только созданный здесь бэкенд; внедрённый принадлежит вызывающему
+        own_chat: OllamaChatBackend | None = None
+        if app.state.chat_backend is None:
+            own_chat = OllamaChatBackend(
+                settings.ollama_url, read_timeout=settings.ollama_read_timeout
+            )
+            app.state.chat_backend = own_chat
 
         sweeper = asyncio.create_task(mgr.run_sweeper(settings.sweep_interval))
         try:
@@ -202,16 +217,20 @@ def create_app(
             with contextlib.suppress(asyncio.CancelledError):
                 await sweeper
             await mgr.shutdown()
+            if own_chat is not None:
+                await own_chat.aclose()
 
     app = FastAPI(title="ai_gateway", lifespan=lifespan)
     app.state.settings = settings
     app.state.registry = registry
     app.state.manager = manager
+    app.state.chat_backend = chat_backend
     # без lifespan (тесты) устройство берётся из настроек; lifespan уточняет его
     app.state.device = "cpu" if settings.device == "auto" else settings.device
 
     install_error_handlers(app)
     app.include_router(audio.router, prefix="/v1")
+    app.include_router(chat.router, prefix="/v1")
     app.include_router(models.router, prefix="/v1")
     app.include_router(health.router)
 

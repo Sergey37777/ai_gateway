@@ -29,11 +29,22 @@ async def test_health(make_client):
     assert r.json() == {
         "status": "ok",
         "device": "cpu",
+        "ollama": "ok",
         "models": [
             {"name": "whisper-large-v3", "loaded": False, "active": 0, "idle_seconds": None},
             {"name": "whisper-large-v3-turbo", "loaded": False, "active": 0, "idle_seconds": None},
         ],
     }
+
+
+async def test_health_ollama_unavailable(make_client):
+    from tests.fakes import FakeOllama
+
+    client = await make_client(ollama=FakeOllama(up=False))
+    r = await client.get("/health")
+    assert r.status_code == 200
+    assert r.json()["status"] == "ok"
+    assert r.json()["ollama"] == "unavailable"
 
 
 async def test_health_after_request_shows_loaded(make_client):
@@ -122,6 +133,25 @@ async def test_lifespan_builds_from_settings(tmp_path):
         assert app.state.device == "cpu"
         assert app.state.manager.status() == [ModelStatus("w", False, 0, None)]
         assert app.state.registry.resolve(None, "transcription").ttl == 600
+        backend = app.state.chat_backend
+        assert not backend._client.is_closed
+    assert backend._client.is_closed
+
+
+async def test_lifespan_keeps_injected_chat_backend(tmp_path):
+    from ai_gateway.backends.ollama import OllamaChatBackend
+
+    models_file = tmp_path / "m.yaml"
+    models_file.write_text(
+        "default_transcription: w\nmodels:\n  w:\n    backend: whisper\n    model: tiny\n"
+    )
+    injected = OllamaChatBackend("http://ollama", read_timeout=5)
+    settings = Settings(_env_file=None, device="cpu", models_file=models_file)
+    app = create_app(settings, chat_backend=injected)
+    async with app.router.lifespan_context(app):
+        assert app.state.chat_backend is injected
+    assert not injected._client.is_closed
+    await injected.aclose()
 
 
 def test_logging_hides_local_values():

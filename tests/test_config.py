@@ -21,6 +21,7 @@ def test_defaults():
     assert (s.max_upload_mb, s.default_ttl, s.sweep_interval) == (200, 600, 30.0)
     assert s.models_file == Path("models.yaml")
     assert s.log_level == "INFO"
+    assert (s.ollama_url, s.ollama_read_timeout) == ("http://localhost:11434", 300.0)
 
 
 def test_env_prefix(monkeypatch):

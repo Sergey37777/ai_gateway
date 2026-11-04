@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     models_file: Path = Path("models.yaml")
     default_ttl: int = 600
     sweep_interval: float = 30.0
+    ollama_url: str = "http://localhost:11434"
+    ollama_read_timeout: float = 300.0
     log_level: str = "INFO"
 
 
