@@ -55,3 +55,9 @@ def test_resolve_device(device, count, expected):
 )
 def test_resolve_compute_type(ct, device, expected):
     assert resolve_compute_type(ct, device) == expected
+
+
+def test_database_defaults():
+    settings = Settings(_env_file=None)
+    assert settings.database_url == "postgresql+psycopg://aigw:aigw@localhost:55432/aigw"
+    assert settings.data_dir == Path("data")

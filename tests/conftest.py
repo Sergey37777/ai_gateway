@@ -7,10 +7,13 @@ from typing import Any, Protocol
 import httpx
 import pytest
 from loguru import logger
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from ai_gateway.app import create_app
 from ai_gateway.backends.ollama import OllamaChatBackend
 from ai_gateway.config import Settings
+from ai_gateway.db.engine import create_engine
 from ai_gateway.lifecycle import ModelManager
 from ai_gateway.registry import ModelRegistry
 from tests.fakes import FakeOllama, FakeTranscriptionBackend
@@ -103,3 +106,32 @@ async def make_client(tmp_path: Path) -> AsyncIterator[MakeClient]:
         await client.aclose()
     for chat_backend in chat_backends:
         await chat_backend.aclose()
+
+
+@pytest.fixture(scope="session")
+def postgres_url() -> Iterator[str]:
+    """Настоящий PostgreSQL (`postgres:17-alpine`, локальный образ) с применёнными миграциями."""
+    try:
+        import docker
+
+        docker.from_env().ping()
+    except Exception as exc:  # Docker нет или он не запущен — PostgreSQL-тесты пропускаются
+        pytest.skip(f"Docker недоступен: {exc}")
+    from testcontainers.community.postgres import PostgresContainer
+
+    from ai_gateway.db.engine import migrate
+
+    with PostgresContainer("postgres:17-alpine", driver="psycopg") as container:
+        url = container.get_connection_url()
+        migrate(url)
+        yield url
+
+
+@pytest.fixture
+async def pg_engine(postgres_url: str) -> AsyncIterator[AsyncEngine]:
+    """Движок к тестовой БД; после теста таблицы очищаются."""
+    engine = create_engine(postgres_url)
+    yield engine
+    async with engine.begin() as connection:
+        await connection.execute(text("TRUNCATE transcriptions CASCADE"))
+    await engine.dispose()

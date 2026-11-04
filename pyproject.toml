@@ -5,15 +5,18 @@ description = "Локальный роутер моделей с OpenAI-совм
 authors = [{ name = "Sergey Lyapin" }]
 requires-python = ">=3.12"
 dependencies = [
+    "alembic>=1.20.1",
     # faster-whisper 1.2.1 вызывает av.open(metadata_errors=...), убранный в PyAV 19
     "av<19",
     "fastapi>=0.162.0",
     "faster-whisper>=1.2.1",
     "httpx>=0.28.1",
     "loguru>=0.7.3",
+    "psycopg[binary]>=3.3.8",
     "pydantic-settings>=2.16.2",
     "python-multipart>=0.0.33",
     "pyyaml>=6.0.3",
+    "sqlalchemy[asyncio]>=2.1.8",
     "uvicorn[standard]>=0.54.0",
 ]
 
@@ -29,6 +32,7 @@ dev = [
     "pytest>=9.2.0",
     "pytest-asyncio>=1.4.1.post1",
     "ruff>=0.17.3",
+    "testcontainers[postgres]>=4.15.0",
     "types-pyyaml>=6.0.12.20261103",
 ]
 
@@ -36,8 +40,11 @@ dev = [
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
-addopts = "-m 'not integration'"
-markers = ["integration: реальные модели faster-whisper и Ollama (медленно, качает веса)"]
+addopts = "-m 'not integration and not postgres'"
+markers = [
+    "integration: реальные модели faster-whisper и Ollama (медленно, качает веса)",
+    "postgres: настоящий PostgreSQL в Docker (testcontainers, образ postgres:17-alpine)",
+]
 
 [tool.ruff]
 line-length = 100
@@ -60,6 +67,11 @@ plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
 module = ["faster_whisper.*", "ctranslate2.*", "av.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# docker (зависимость testcontainers) — только проверка доступности Docker в tests/conftest.py
+module = ["docker.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

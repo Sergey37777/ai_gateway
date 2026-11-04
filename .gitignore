@@ -20,3 +20,4 @@ docs/
 
 # Web UI (каталог web/)
 web/node_modules/
+data/

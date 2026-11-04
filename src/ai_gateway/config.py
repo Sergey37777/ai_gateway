@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     ollama_url: str = "http://localhost:11434"
     ollama_read_timeout: float = 300.0
     web_dir: Path = Path("web/dist")
+    # PostgreSQL: история распознаваний и очередь задач (dev-контейнер — compose.dev.yaml)
+    database_url: str = "postgresql+psycopg://aigw:aigw@localhost:55432/aigw"
+    # загрузки (uploads/) и Opus-аудио истории (audio/)
+    data_dir: Path = Path("data")
     log_level: str = "INFO"
 
 
