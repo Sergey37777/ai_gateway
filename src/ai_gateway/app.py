@@ -23,6 +23,7 @@ from ai_gateway.config import (
     resolve_device,
 )
 from ai_gateway.errors import error_response, install_error_handlers, internal_error
+from ai_gateway.files import file_too_large
 from ai_gateway.lifecycle import ModelManager
 from ai_gateway.registry import ModelRegistry
 from ai_gateway.web import mount_web
@@ -129,7 +130,7 @@ class UploadSizeGuardMiddleware:
         error = (
             chat.request_too_large(self.max_upload_mb)
             if scope["path"] == CHAT_PATH
-            else audio.file_too_large(self.max_upload_mb)
+            else file_too_large(self.max_upload_mb)
         )
         response = error_response(error)
         await response(scope, receive, send)

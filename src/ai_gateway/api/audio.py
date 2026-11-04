@@ -14,6 +14,7 @@ from ai_gateway.api.deps import get_manager, get_registry, get_settings
 from ai_gateway.backends.base import TranscriptionBackend, TranscriptionOptions
 from ai_gateway.config import Settings
 from ai_gateway.errors import GatewayError, model_unavailable
+from ai_gateway.files import file_too_large
 from ai_gateway.formatting import is_response_format, render
 from ai_gateway.languages import LANGUAGES
 from ai_gateway.lifecycle import ModelManager, run_blocking
@@ -23,12 +24,6 @@ router = APIRouter()
 
 CHUNK_SIZE = 1024 * 1024
 GRANULARITIES = frozenset({"segment", "word"})
-
-
-def file_too_large(max_upload_mb: int) -> GatewayError:
-    return GatewayError(
-        413, "file_too_large", f"Файл больше лимита {max_upload_mb} МБ", param="file"
-    )
 
 
 # признаки нехватки памяти GPU в ошибках CTranslate2 / cuBLAS / cuDNN
