@@ -25,6 +25,7 @@ from ai_gateway.config import (
 from ai_gateway.errors import error_response, install_error_handlers, internal_error
 from ai_gateway.lifecycle import ModelManager
 from ai_gateway.registry import ModelRegistry
+from ai_gateway.web import mount_web
 
 TRANSCRIPTIONS_PATH = "/v1/audio/transcriptions"
 CHAT_PATH = "/v1/chat/completions"
@@ -234,6 +235,8 @@ def create_app(
     app.include_router(models.router, prefix="/v1")
     app.include_router(health.router)
     app.include_router(ui.router)
+    # статика UI — последней: `/v1/*`, `/health`, `/ui/config` матчатся раньше
+    mount_web(app, settings.web_dir)
 
     # последний добавленный middleware — внешний: request id оборачивает всё (включая 401/413),
     # ключ проверяется раньше, чем считается размер тела

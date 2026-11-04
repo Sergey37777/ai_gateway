@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     sweep_interval: float = 30.0
     ollama_url: str = "http://localhost:11434"
     ollama_read_timeout: float = 300.0
+    web_dir: Path = Path("web/dist")
     log_level: str = "INFO"
 
 

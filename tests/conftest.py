@@ -1,6 +1,7 @@
 import copy
 import sys
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from pathlib import Path
 from typing import Any, Protocol
 
 import httpx
@@ -56,11 +57,12 @@ class MakeClient(Protocol):
         max_upload_mb: int = 200,
         backend: FakeTranscriptionBackend | None = None,
         ollama: FakeOllama | None = None,
+        web_dir: Path | None = None,
     ) -> Awaitable[GatewayClient]: ...
 
 
 @pytest.fixture
-async def make_client() -> AsyncIterator[MakeClient]:
+async def make_client(tmp_path: Path) -> AsyncIterator[MakeClient]:
     clients: list[GatewayClient] = []
     chat_backends: list[OllamaChatBackend] = []
 
@@ -70,6 +72,7 @@ async def make_client() -> AsyncIterator[MakeClient]:
         max_upload_mb: int = 200,
         backend: FakeTranscriptionBackend | None = None,
         ollama: FakeOllama | None = None,
+        web_dir: Path | None = None,
     ) -> GatewayClient:
         fake_ollama = ollama if ollama is not None else FakeOllama()
         chat_backend = OllamaChatBackend(
@@ -78,7 +81,12 @@ async def make_client() -> AsyncIterator[MakeClient]:
         chat_backends.append(chat_backend)
         fake = backend if backend is not None else FakeTranscriptionBackend()
         settings = Settings(
-            _env_file=None, device="cpu", api_key=api_key, max_upload_mb=max_upload_mb
+            _env_file=None,
+            device="cpu",
+            api_key=api_key,
+            max_upload_mb=max_upload_mb,
+            # без явного каталога — несуществующий: тесты не зависят от наличия сборки UI
+            web_dir=web_dir if web_dir is not None else tmp_path / "no-web",
         )
         registry = ModelRegistry.from_dict(copy.deepcopy(REGISTRY_DATA), default_ttl=600)
         factory: Callable[..., FakeTranscriptionBackend] = lambda _spec: fake  # noqa: E731
