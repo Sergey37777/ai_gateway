@@ -46,3 +46,34 @@ export interface Transcription {
   words: Word[];
   raw: string;
 }
+
+/** Статус распознавания в истории (`/api/transcriptions`). */
+export type JobStatus = "queued" | "running" | "done" | "failed" | "cancelled";
+
+/** Объект распознавания `/api/transcriptions/{id}`. */
+export interface TranscriptionJob {
+  id: string;
+  status: JobStatus;
+  source: "ui" | "api";
+  title: string;
+  filename: string;
+  model: string;
+  language: string | null;
+  duration: number | null;
+  progress: number | null;
+  queue_position: number | null;
+  error: { code: string; message: string } | null;
+  has_audio: boolean;
+  /** «Повторить» доступно (загрузка ещё хранится). */
+  retryable: boolean;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  /** Фрагмент текста с «совпадениями» — только в результатах поиска. */
+  snippet?: string;
+}
+
+export interface TranscriptionPage {
+  data: TranscriptionJob[];
+  next: string | null;
+}
