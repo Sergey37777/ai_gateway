@@ -7,12 +7,13 @@ import pytest
 import yaml
 
 from ai_gateway.errors import GatewayError, model_unavailable
-from ai_gateway.registry import ModelRegistry, RegistryError
+from ai_gateway.registry import ModelRegistry, OllamaSpec, RegistryError
 
 DATA: dict[str, Any] = {
     "default_transcription": "whisper-large-v3-turbo",
-    "aliases": {"whisper-1": "whisper-large-v3-turbo"},
+    "aliases": {"whisper-1": "whisper-large-v3-turbo", "gpt-4o-mini": "qwen3-14b"},
     "models": {
+        "qwen3-14b": {"backend": "ollama", "model": "qwen3:14b"},
         "whisper-large-v3": {
             "backend": "whisper",
             "model": "large-v3",
@@ -33,42 +34,96 @@ def registry() -> ModelRegistry:
 
 
 def test_resolve_by_name(registry):
-    assert registry.resolve("whisper-large-v3").model == "large-v3"
+    assert registry.resolve("whisper-large-v3", "transcription").model == "large-v3"
 
 
 def test_resolve_alias(registry):
-    assert registry.resolve("whisper-1").name == "whisper-large-v3-turbo"
+    assert registry.resolve("whisper-1", "transcription").name == "whisper-large-v3-turbo"
 
 
 @pytest.mark.parametrize("name", [None, ""])
 def test_resolve_default(registry, name):
-    assert registry.resolve(name).name == "whisper-large-v3-turbo"
+    assert registry.resolve(name, "transcription").name == "whisper-large-v3-turbo"
     assert registry.default_transcription == "whisper-large-v3-turbo"
 
 
 def test_spec_defaults(registry):
-    spec = registry.resolve("whisper-large-v3-turbo")
+    spec = registry.resolve("whisper-large-v3-turbo", "transcription")
     assert (spec.max_concurrency, spec.vad_filter, spec.backend) == (1, True, "whisper")
 
 
 def test_default_ttl_applied():
     r = ModelRegistry.from_dict(copy.deepcopy(DATA), default_ttl=42)
-    assert r.resolve("whisper-large-v3-turbo").ttl == 42
-    assert r.resolve("whisper-large-v3").ttl == 600
+    assert r.resolve("whisper-large-v3-turbo", "transcription").ttl == 42
+    assert r.resolve("whisper-large-v3", "transcription").ttl == 600
 
 
 def test_unknown_model(registry):
     with pytest.raises(GatewayError) as e:
-        registry.resolve("nope")
+        registry.resolve("nope", "transcription")
     assert (e.value.status_code, e.value.code, e.value.param) == (404, "model_not_found", "model")
 
 
 def test_model_ids(registry):
-    assert registry.model_ids() == ["whisper-1", "whisper-large-v3", "whisper-large-v3-turbo"]
+    assert registry.model_ids() == [
+        "gpt-4o-mini",
+        "qwen3-14b",
+        "whisper-1",
+        "whisper-large-v3",
+        "whisper-large-v3-turbo",
+    ]
 
 
 def test_specs(registry):
-    assert [s.name for s in registry.specs()] == ["whisper-large-v3", "whisper-large-v3-turbo"]
+    assert [s.name for s in registry.specs()] == [
+        "qwen3-14b",
+        "whisper-large-v3",
+        "whisper-large-v3-turbo",
+    ]
+
+
+def test_whisper_specs_only_whisper(registry):
+    assert [s.name for s in registry.whisper_specs()] == [
+        "whisper-large-v3",
+        "whisper-large-v3-turbo",
+    ]
+
+
+def test_ollama_spec_parsed(registry):
+    assert registry.resolve("qwen3-14b", "chat") == OllamaSpec(
+        name="qwen3-14b", backend="ollama", model="qwen3:14b"
+    )
+
+
+def test_chat_alias(registry):
+    assert registry.resolve("gpt-4o-mini", "chat").name == "qwen3-14b"
+
+
+@pytest.mark.parametrize("name", ["", None])
+def test_chat_empty_model_400(registry, name):
+    with pytest.raises(GatewayError) as e:
+        registry.resolve(name, "chat")
+    assert (e.value.status_code, e.value.code, e.value.param) == (
+        400,
+        "invalid_request_error",
+        "model",
+    )
+
+
+@pytest.mark.parametrize(("name", "kind"), [("qwen3-14b", "transcription"), ("whisper-1", "chat")])
+def test_wrong_kind_400(registry, name, kind):
+    with pytest.raises(GatewayError) as e:
+        registry.resolve(name, kind)
+    assert (e.value.status_code, e.value.code, e.value.param) == (
+        400,
+        "model_not_supported",
+        "model",
+    )
+
+
+def test_default_ttl_not_applied_to_ollama(registry):
+    spec = registry.resolve("qwen3-14b", "chat")
+    assert not hasattr(spec, "ttl")
 
 
 def _alias_to_missing(d):
@@ -91,6 +146,22 @@ def _unknown_backend(d):
     d["models"]["whisper-large-v3"]["backend"] = "tensorflow"
 
 
+def _ollama_with_vad(d):
+    d["models"]["qwen3-14b"]["vad_filter"] = True
+
+
+def _ollama_with_ttl(d):
+    d["models"]["qwen3-14b"]["ttl"] = 60
+
+
+def _llama_backend(d):
+    d["models"]["qwen3-14b"]["backend"] = "llama"
+
+
+def _default_is_ollama(d):
+    d["default_transcription"] = "gpt-4o-mini"
+
+
 def _no_models(d):
     d["models"] = {}
 
@@ -104,6 +175,10 @@ def _no_models(d):
         (_max_concurrency_0, "whisper-large-v3"),
         (_unknown_backend, "whisper-large-v3"),
         (_no_models, "models"),
+        (_ollama_with_vad, "qwen3-14b"),
+        (_ollama_with_ttl, "qwen3-14b"),
+        (_llama_backend, "qwen3-14b"),
+        (_default_is_ollama, "default_transcription"),
     ],
 )
 def test_invalid_config(mutate: Callable[[dict[str, Any]], None], match: str) -> None:
@@ -118,7 +193,13 @@ def test_from_file(tmp_path):
     path.write_text(yaml.safe_dump(DATA))
     r = ModelRegistry.from_file(path, default_ttl=600)
     assert r.specs() == ModelRegistry.from_dict(copy.deepcopy(DATA), default_ttl=600).specs()
-    assert r.model_ids() == ["whisper-1", "whisper-large-v3", "whisper-large-v3-turbo"]
+    assert r.model_ids() == [
+        "gpt-4o-mini",
+        "qwen3-14b",
+        "whisper-1",
+        "whisper-large-v3",
+        "whisper-large-v3-turbo",
+    ]
 
 
 def test_from_file_not_a_mapping(tmp_path):
@@ -131,8 +212,8 @@ def test_from_file_not_a_mapping(tmp_path):
 def test_repo_model_files_are_valid():
     prod = ModelRegistry.from_file(REPO_ROOT / "models.yaml", default_ttl=600)
     dev = ModelRegistry.from_file(REPO_ROOT / "models.dev.yaml", default_ttl=600)
-    assert prod.resolve("whisper-1").name == "whisper-large-v3-turbo"
-    assert dev.resolve("whisper-1").name == "whisper-base"
+    assert prod.resolve("whisper-1", "transcription").name == "whisper-large-v3-turbo"
+    assert dev.resolve("whisper-1", "transcription").name == "whisper-base"
 
 
 def test_gateway_error_body():

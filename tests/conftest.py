@@ -16,8 +16,9 @@ from tests.fakes import FakeTranscriptionBackend
 # реестр как в models.yaml (спецификация §4.4)
 REGISTRY_DATA: dict[str, Any] = {
     "default_transcription": "whisper-large-v3-turbo",
-    "aliases": {"whisper-1": "whisper-large-v3-turbo"},
+    "aliases": {"whisper-1": "whisper-large-v3-turbo", "gpt-4o-mini": "qwen3-14b"},
     "models": {
+        "qwen3-14b": {"backend": "ollama", "model": "qwen3:14b"},
         "whisper-large-v3": {
             "backend": "whisper",
             "model": "large-v3",
@@ -71,7 +72,7 @@ async def make_client() -> AsyncIterator[MakeClient]:
         )
         registry = ModelRegistry.from_dict(copy.deepcopy(REGISTRY_DATA), default_ttl=600)
         factory: Callable[..., FakeTranscriptionBackend] = lambda _spec: fake  # noqa: E731
-        manager = ModelManager(registry.specs(), factory)
+        manager = ModelManager(registry.whisper_specs(), factory)
         app = create_app(settings, registry=registry, manager=manager)
         client = GatewayClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
         client.backend = fake

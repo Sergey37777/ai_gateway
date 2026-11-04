@@ -189,7 +189,7 @@ def create_app(
             settings.models_file, default_ttl=settings.default_ttl
         )
         mgr: ModelManager = app.state.manager or ModelManager(
-            reg.specs(),
+            reg.whisper_specs(),
             lambda spec: build_backend(spec, device=device, compute_type=compute_type),
         )
         app.state.registry, app.state.manager = reg, mgr

@@ -306,6 +306,15 @@ async def test_chunked_upload_stops_at_limit(make_client):
     assert client.backend.load_calls == 0
 
 
+async def test_chat_model_in_transcriptions_400(make_client):
+    client = await make_client()
+    r = await client.post(URL, data={"model": "qwen3-14b"}, files=FILES)
+    assert r.status_code == 400
+    assert _error(r)["code"] == "model_not_supported"
+    assert _error(r)["param"] == "model"
+    assert client.backend.load_calls == 0
+
+
 async def test_non_transcription_model_rejected_before_load():
     import copy
 
@@ -320,7 +329,7 @@ async def test_non_transcription_model_rejected_before_load():
 
     registry = ModelRegistry.from_dict(copy.deepcopy(REGISTRY_DATA), default_ttl=600)
     backend = FakeLoadableBackend()
-    manager = ModelManager(registry.specs(), lambda _spec: backend)
+    manager = ModelManager(registry.whisper_specs(), lambda _spec: backend)
     app = create_app(Settings(_env_file=None, device="cpu"), registry=registry, manager=manager)
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"

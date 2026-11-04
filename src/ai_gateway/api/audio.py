@@ -78,7 +78,7 @@ async def create_transcription(
         )
     if language and language not in LANGUAGES:
         raise _bad_param("language", f"Неизвестный код языка '{language}'")
-    spec = registry.resolve(model)
+    spec = registry.resolve(model, "transcription")
     # до загрузки весов и чтения файла: не-речевая модель не должна попадать в VRAM
     transcriber = manager.backend(spec.name)
     if not isinstance(transcriber, TranscriptionBackend):

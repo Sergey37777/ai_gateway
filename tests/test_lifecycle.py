@@ -5,12 +5,12 @@ import pytest
 
 from ai_gateway.errors import GatewayError
 from ai_gateway.lifecycle import ModelManager, ModelStatus, run_blocking
-from ai_gateway.registry import ModelSpec
+from ai_gateway.registry import WhisperSpec
 from tests.fakes import FakeClock, FakeTranscriptionBackend, spec
 
 
 def make_manager(
-    *specs: ModelSpec,
+    *specs: WhisperSpec,
     backend: FakeTranscriptionBackend | None = None,
     backends: dict[str, FakeTranscriptionBackend] | None = None,
 ) -> tuple[ModelManager, FakeTranscriptionBackend, FakeClock]:

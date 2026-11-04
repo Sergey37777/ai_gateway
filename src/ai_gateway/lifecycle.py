@@ -14,7 +14,7 @@ from loguru import logger
 
 from ai_gateway.backends.base import LoadableBackend
 from ai_gateway.errors import GatewayError, model_unavailable
-from ai_gateway.registry import ModelSpec
+from ai_gateway.registry import WhisperSpec
 
 
 async def run_blocking[**P, T](func: Callable[P, T], /, *args: P.args, **kwargs: P.kwargs) -> T:
@@ -50,7 +50,7 @@ class ModelStatus:
 
 @dataclass
 class _Slot:
-    spec: ModelSpec
+    spec: WhisperSpec
     backend: LoadableBackend
     semaphore: asyncio.Semaphore
     active: int = 0
@@ -66,8 +66,8 @@ class ModelManager:
 
     def __init__(
         self,
-        specs: Iterable[ModelSpec],
-        backend_factory: Callable[[ModelSpec], LoadableBackend],
+        specs: Iterable[WhisperSpec],
+        backend_factory: Callable[[WhisperSpec], LoadableBackend],
         *,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:

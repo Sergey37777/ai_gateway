@@ -4,7 +4,7 @@ from ai_gateway.app import create_app
 from ai_gateway.config import Settings
 from ai_gateway.lifecycle import ModelStatus
 
-IDS = ["whisper-1", "whisper-large-v3", "whisper-large-v3-turbo"]
+IDS = ["gpt-4o-mini", "qwen3-14b", "whisper-1", "whisper-large-v3", "whisper-large-v3-turbo"]
 
 
 async def test_models_list(make_client):
@@ -15,7 +15,7 @@ async def test_models_list(make_client):
     assert body["object"] == "list"
     assert [m["id"] for m in body["data"]] == IDS
     assert body["data"][0] == {
-        "id": "whisper-1",
+        "id": "gpt-4o-mini",
         "object": "model",
         "created": 0,
         "owned_by": "ai_gateway",
@@ -121,7 +121,7 @@ async def test_lifespan_builds_from_settings(tmp_path):
     async with app.router.lifespan_context(app):
         assert app.state.device == "cpu"
         assert app.state.manager.status() == [ModelStatus("w", False, 0, None)]
-        assert app.state.registry.resolve(None).ttl == 600
+        assert app.state.registry.resolve(None, "transcription").ttl == 600
 
 
 def test_logging_hides_local_values():

@@ -4,7 +4,7 @@ import threading
 from pathlib import Path
 
 from ai_gateway.backends.base import Segment, TranscriptionOptions, TranscriptionResult
-from ai_gateway.registry import ModelSpec
+from ai_gateway.registry import WhisperSpec
 
 
 class FakeClock:
@@ -34,8 +34,8 @@ def make_result(text: str = "привет мир") -> TranscriptionResult:
     return TranscriptionResult(text=text, language="ru", duration=1.0, segments=[segment])
 
 
-def spec(name: str = "m", ttl: int = 600, max_concurrency: int = 1) -> ModelSpec:
-    return ModelSpec(
+def spec(name: str = "m", ttl: int = 600, max_concurrency: int = 1) -> WhisperSpec:
+    return WhisperSpec(
         name=name, backend="whisper", model="tiny", ttl=ttl, max_concurrency=max_concurrency
     )
 
