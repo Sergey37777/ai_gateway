@@ -1,7 +1,7 @@
 """Форматирование результата распознавания в ответы OpenAI (json/text/verbose_json/srt/vtt)."""
 
 from dataclasses import asdict
-from typing import Literal, get_args
+from typing import Literal, TypeGuard, get_args
 
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 
@@ -10,6 +10,11 @@ from ai_gateway.languages import language_name
 
 ResponseFormat = Literal["json", "text", "verbose_json", "srt", "vtt"]
 RESPONSE_FORMATS: frozenset[str] = frozenset(get_args(ResponseFormat))
+
+
+def is_response_format(value: str) -> TypeGuard[ResponseFormat]:
+    """Поддерживается ли формат ответа."""
+    return value in RESPONSE_FORMATS
 
 
 def format_timestamp(seconds: float, *, decimal_marker: str) -> str:
