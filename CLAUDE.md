@@ -15,6 +15,13 @@ Roadmap: этап 2 — бэкенд Ollama + `/v1/chat/completions` (SSE); эт
 
 Документация, комментарии и сообщения коммитов — на русском.
 
+## Документация
+
+- `docs/` **не в git** (в `.gitignore`), хранится только локально — не коммитить и не ссылаться
+  на него в коде/README как на часть репозитория.
+- Спеки итераций: `docs/superpowers/specs/`, планы: `docs/superpowers/plans/`.
+  Прогресс отмечается чекбоксами в плане: выполненный шаг — `- [x]`.
+
 ## Окружения
 
 - **Разработка:** macOS без GPU — сервис запускается вне Docker на CPU
@@ -34,6 +41,7 @@ uv run pytest                                            # юнит- и API-те
 uv run pytest tests/test_lifecycle.py::test_name         # один тест
 uv run pytest -m integration                             # реальный whisper `tiny` на CPU + OpenAI SDK
 uv run ruff check . && uv run ruff format .
+uv run mypy                                              # strict, конфиг в pyproject.toml
 docker compose up --build                                # на целевой машине с GPU
 ```
 
@@ -58,6 +66,13 @@ docker compose up --build                                # на целевой �
   через `GatewayError`; OOM/ошибка загрузки модели → 503 `model_unavailable` + `Retry-After`.
 - Конфигурация: env с префиксом `AIGW_` (`config.py`, pydantic-settings) + реестр моделей
   `models.yaml`, который валидируется при старте.
+
+## Стиль
+
+- Python: type hints везде, `mypy --strict` для всех модулей `src/`, без `Any` без причины
+  (если нужен — комментарий почему). Библиотеки без стабов (`faster_whisper`, `ctranslate2`, `av`)
+  изолированы в `backends/` — типизированные обёртки, наружу их типы не протекают.
+- TypeScript (будущий UI): `strict` в `tsconfig`, без `any` без причины.
 
 ## Важные ограничения
 

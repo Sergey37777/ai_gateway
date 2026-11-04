@@ -14,3 +14,6 @@ build/
 .vscode/
 .DS_Store
 LOGS/
+
+# локальная документация (спеки, планы) — не в git
+docs/
