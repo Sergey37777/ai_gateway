@@ -30,8 +30,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # ---------- runtime: только Python и готовое окружение ----------
 FROM nvidia/cuda:12.6.3-cudnn-runtime-ubuntu24.04
 
+# tzdata — база часовых поясов: без неё TZ из .env игнорируется и логи идут в UTC
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends python3.12 \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends python3.12 tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 # каталог кэша создаётся от app, чтобы volume hf-cache унаследовал владельца

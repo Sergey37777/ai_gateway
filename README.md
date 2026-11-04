@@ -119,6 +119,7 @@ models:
 
 См. `.env.example`: `AIGW_DEVICE`, `AIGW_COMPUTE_TYPE`, `AIGW_API_KEY`, `AIGW_MAX_UPLOAD_MB`,
 `AIGW_MODELS_FILE`, `AIGW_DEFAULT_TTL`, `AIGW_SWEEP_INTERVAL`, `AIGW_LOG_LEVEL`.
+`TZ` (например, `Europe/Moscow`) задаёт часовой пояс контейнера для времени в логах; без него — UTC.
 
 ## Чек-лист проверки на GPU
 
