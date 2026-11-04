@@ -1,0 +1,26 @@
+services:
+  gateway:
+    build: .
+    image: ai-gateway:latest
+    ports:
+      - "8000:8000"
+    env_file: .env
+    volumes:
+      - hf-cache:/home/app/.cache/huggingface
+      - ./models.yaml:/app/models.yaml:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  hf-cache:
