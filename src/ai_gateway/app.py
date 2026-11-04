@@ -35,7 +35,8 @@ def configure_logging(level: str) -> None:
     """loguru в stderr; `request_id` по умолчанию — `-` (вне запроса)."""
     logger.remove()
     logger.configure(extra={"request_id": "-"})
-    logger.add(sys.stderr, level=level.upper(), format=LOG_FORMAT)
+    # diagnose=False: не печатать значения переменных в трейсбеках (ключи, содержимое запросов)
+    logger.add(sys.stderr, level=level.upper(), format=LOG_FORMAT, diagnose=False)
 
 
 class RequestContextMiddleware:

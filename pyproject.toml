@@ -5,6 +5,8 @@ description = "Локальный роутер моделей с OpenAI-совм
 authors = [{ name = "Sergey Lyapin" }]
 requires-python = ">=3.12"
 dependencies = [
+    # faster-whisper 1.2.1 вызывает av.open(metadata_errors=...), убранный в PyAV 19
+    "av<19",
     "fastapi>=0.162.0",
     "faster-whisper>=1.2.1",
     "loguru>=0.7.3",
@@ -21,6 +23,7 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "httpx>=0.28.1",
+    "httpx2>=2.16.0",
     "mypy>=2.4.1",
     "openai>=3.45.0",
     "pytest>=9.2.0",

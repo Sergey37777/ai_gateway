@@ -120,3 +120,19 @@ async def test_lifespan_builds_from_settings(tmp_path):
         assert app.state.device == "cpu"
         assert app.state.manager.status() == [ModelStatus("w", False, 0, None)]
         assert app.state.registry.resolve(None).ttl == 600
+
+
+def test_logging_hides_local_values(capsys):
+    from loguru import logger
+
+    from ai_gateway.app import configure_logging
+
+    configure_logging("INFO")
+    secret = "s3cr3t-value"
+    try:
+        raise ValueError(secret[:1])
+    except ValueError:
+        logger.exception("сбой")
+    err = capsys.readouterr().err
+    assert "сбой" in err
+    assert "s3cr3t-value" not in err
