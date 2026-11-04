@@ -1,8 +1,12 @@
 """Протоколы бэкендов и типы результата распознавания."""
 
+from collections.abc import AsyncIterator
+from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol, runtime_checkable
+
+from ai_gateway.registry import OllamaSpec
 
 # JSON-объект: значения разбираются через isinstance, без Any
 JsonObject = dict[str, object]
@@ -78,4 +82,26 @@ class TranscriptionBackend(LoadableBackend, Protocol):
 
     def transcribe(self, audio_path: Path, options: TranscriptionOptions) -> TranscriptionResult:
         """Блокирующее распознавание файла."""
+        ...
+
+
+class ChatBackend(Protocol):
+    """Бэкенд чата: HTTP-клиент к Ollama, веса которой ведёт она сама."""
+
+    async def complete(self, spec: OllamaSpec, payload: JsonObject) -> JsonObject:
+        """Нестриминговый запрос; тело ответа Ollama как есть."""
+        ...
+
+    def stream(
+        self, spec: OllamaSpec, payload: JsonObject
+    ) -> AbstractAsyncContextManager[AsyncIterator[JsonObject]]:
+        """Стрим: ошибки статуса бросаются при входе, соединение закрывается при выходе."""
+        ...
+
+    async def ping(self) -> bool:
+        """Доступна ли Ollama."""
+        ...
+
+    async def aclose(self) -> None:
+        """Закрытие HTTP-клиента."""
         ...
