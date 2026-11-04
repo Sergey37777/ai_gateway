@@ -29,7 +29,13 @@ export function MicRecorder({ disabled, onRecorded }: Props) {
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
+  // запись живёт дольше рендера, в котором началась: колбэк берём актуальный
+  const onRecordedRef = useRef(onRecorded);
   const available = micAvailable();
+
+  useEffect(() => {
+    onRecordedRef.current = onRecorded;
+  });
 
   useEffect(() => {
     if (recording === null) return undefined;
@@ -80,7 +86,7 @@ export function MicRecorder({ disabled, onRecorded }: Props) {
       recorderRef.current = null;
       setRecording(null);
       const mime = type.mimeType.split(";")[0] ?? type.mimeType;
-      onRecorded(new File(chunks, recordingName(type.ext, new Date()), { type: mime }));
+      onRecordedRef.current(new File(chunks, recordingName(type.ext, new Date()), { type: mime }));
     });
     recorderRef.current = recorder;
     recorder.start();

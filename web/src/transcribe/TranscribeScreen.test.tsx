@@ -179,3 +179,50 @@ test("отмена во время загрузки", async () => {
   });
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });
+
+/** Фейковый MediaRecorder: stop() сразу отдаёт один кусок и событие stop. */
+class FakeMediaRecorder extends EventTarget {
+  static isTypeSupported(type: string): boolean {
+    return type === "audio/webm;codecs=opus";
+  }
+  state: "inactive" | "recording" = "inactive";
+  readonly stream: MediaStream;
+  constructor(stream: MediaStream) {
+    super();
+    this.stream = stream;
+  }
+  start(): void {
+    this.state = "recording";
+  }
+  stop(): void {
+    this.state = "inactive";
+    const data = new Event("dataavailable");
+    Object.assign(data, { data: new Blob(["voice"], { type: "audio/webm" }) });
+    this.dispatchEvent(data);
+    this.dispatchEvent(new Event("stop"));
+  }
+}
+
+test("запись, законченная во время другой операции, не запускает вторую", async () => {
+  vi.stubGlobal("isSecureContext", true);
+  vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
+  const stream = { getTracks: () => [{ stop: () => undefined }] };
+  Object.defineProperty(navigator, "mediaDevices", {
+    configurable: true,
+    value: { getUserMedia: () => Promise.resolve(stream) },
+  });
+  const transcribe = vi.fn<TranscribeFn>(() => new Promise<Transcription>(() => undefined));
+  const { user } = setup({ transcribe });
+  await user.click(screen.getByRole("button", { name: "Записать с микрофона" }));
+  const stop = await screen.findByRole("button", { name: /Остановить/ });
+  await user.upload(
+    screen.getByLabelText("Аудио или видео файл"),
+    new File(["x"], "a.wav", { type: "audio/wav" }),
+  );
+  expect(transcribe).toHaveBeenCalledTimes(1);
+  await user.click(stop);
+  expect(transcribe).toHaveBeenCalledTimes(1);
+  expect(
+    screen.getByText("Дождитесь окончания текущего распознавания или отмените его"),
+  ).toBeInTheDocument();
+});

@@ -45,6 +45,11 @@ export function TranscribeScreen({ config, onDirtyChange, deps }: Props) {
   );
 
   const run = async (file: File) => {
+    // запись с микрофона может закончиться, пока идёт операция с другим файлом
+    if (controllerRef.current !== null) {
+      setRejection("Дождитесь окончания текущего распознавания или отмените его");
+      return;
+    }
     const plan = planUpload(file, config.max_upload_mb);
     if (plan.kind === "too_large") {
       setRejection(plan.message);
@@ -86,6 +91,8 @@ export function TranscribeScreen({ config, onDirtyChange, deps }: Props) {
     } catch (error) {
       if (isAbortError(error)) return;
       dispatch({ type: "fail", opId, message: userMessage(error) });
+    } finally {
+      if (controllerRef.current === controller) controllerRef.current = null;
     }
   };
 
