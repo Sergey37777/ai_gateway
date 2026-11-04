@@ -1,92 +1,67 @@
-/** Состояние экрана распознавания: фазы операции и защита от событий устаревших операций. */
-
-import type { Transcription } from "../api/types";
+/** Состояние приёма файла: фазы до создания фоновой задачи и защита от событий устаревших операций. */
 
 export type Phase =
   | { name: "idle" }
   | { name: "extracting"; progress: number | null }
   | { name: "uploading"; progress: number }
-  | { name: "transcribing"; startedAt: number }
-  | { name: "done"; result: Transcription }
   | { name: "error"; message: string };
 
 export interface TranscribeState {
-  /** id текущей операции; 0 — операции нет (после cancel/reset поздние события игнорируются). */
+  /** id текущей операции; 0 — операции нет (после cancel поздние события игнорируются). */
   opId: number;
   phase: Phase;
-  /** Исходный файл (для плеера), даже если на сервер ушла извлечённая дорожка. */
-  source: File | null;
 }
 
 export type TranscribeAction =
   | { type: "start"; opId: number; source: File; extract: boolean }
   | { type: "extractProgress"; opId: number; progress: number }
-  | { type: "extracted"; opId: number; file: File }
+  | { type: "extracted"; opId: number }
   | { type: "uploadProgress"; opId: number; progress: number }
-  | { type: "uploaded"; opId: number; now: number }
-  | { type: "done"; opId: number; result: Transcription }
+  /** Сервер принял файл (202): дальше работает очередь, приём снова свободен. */
+  | { type: "created"; opId: number }
   | { type: "fail"; opId: number; message: string }
-  | { type: "cancel" }
-  | { type: "reset" };
+  | { type: "cancel" };
 
 export const initialTranscribeState: TranscribeState = {
   opId: 0,
   phase: { name: "idle" },
-  source: null,
 };
-
-function phaseFor(state: TranscribeState, action: TranscribeAction): Phase | null {
-  switch (action.type) {
-    case "extractProgress":
-      return state.phase.name === "extracting"
-        ? { name: "extracting", progress: action.progress }
-        : null;
-    case "extracted":
-      return { name: "uploading", progress: 0 };
-    case "uploadProgress":
-      return state.phase.name === "uploading"
-        ? { name: "uploading", progress: action.progress }
-        : null;
-    case "uploaded":
-      return { name: "transcribing", startedAt: action.now };
-    case "done":
-      return { name: "done", result: action.result };
-    case "fail":
-      return { name: "error", message: action.message };
-    case "start":
-    case "cancel":
-    case "reset":
-      return null;
-  }
-}
 
 export function transcribeReducer(
   state: TranscribeState,
   action: TranscribeAction,
 ): TranscribeState {
+  if (action.type === "start") {
+    return {
+      opId: action.opId,
+      phase: action.extract
+        ? { name: "extracting", progress: null }
+        : { name: "uploading", progress: 0 },
+    };
+  }
+  if (action.type === "cancel") return initialTranscribeState;
+  if (action.opId !== state.opId || state.opId === 0) return state;
   switch (action.type) {
-    case "start":
-      return {
-        opId: action.opId,
-        phase: action.extract
-          ? { name: "extracting", progress: null }
-          : { name: "uploading", progress: 0 },
-        source: action.source,
-      };
-    case "cancel":
-    case "reset":
+    case "extractProgress":
+      return state.phase.name === "extracting"
+        ? { ...state, phase: { name: "extracting", progress: action.progress } }
+        : state;
+    case "extracted":
+      return { ...state, phase: { name: "uploading", progress: 0 } };
+    case "uploadProgress":
+      return state.phase.name === "uploading"
+        ? { ...state, phase: { name: "uploading", progress: action.progress } }
+        : state;
+    case "created":
       return initialTranscribeState;
-    default: {
-      if (action.opId !== state.opId || state.opId === 0) return state;
-      const phase = phaseFor(state, action);
-      return phase === null ? state : { ...state, phase };
-    }
+    case "fail":
+      return { opId: 0, phase: { name: "error", message: action.message } };
   }
 }
 
 /** Идёт ли операция (для блокировки ввода и кнопки «Отмена»). */
 export function isBusy(phase: Phase): boolean {
-  return phase.name === "extracting" || phase.name === "uploading" || phase.name === "transcribing";
+  return phase.name === "extracting" || phase.name === "uploading";
 }
 
 /**
@@ -96,11 +71,8 @@ export function isBusy(phase: Phase): boolean {
 export function progressValue(phase: Phase): number | null | undefined {
   switch (phase.name) {
     case "extracting":
-      return phase.progress;
     case "uploading":
       return phase.progress;
-    case "transcribing":
-      return null;
     default:
       return undefined;
   }

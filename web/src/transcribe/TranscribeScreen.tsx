@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import { userMessage, isAbortError } from "../api/errors";
-import { transcribe as defaultTranscribe } from "../api/transcribe";
+import { createTranscription as defaultCreate } from "../api/transcriptions";
+import type { TranscriptionJob } from "../api/types";
 import { ErrorBanner } from "../components/ErrorBanner";
 import type { ScreenProps } from "../screen";
 import { extractAudio as defaultExtractAudio } from "./extractAudio";
@@ -9,20 +10,22 @@ import { MicRecorder } from "./MicRecorder";
 import { extractedTooLarge, planUpload } from "./plan";
 import { Progress } from "./Progress";
 import { initialTranscribeState, isBusy, progressValue, transcribeReducer } from "./state";
-import { TranscriptView } from "./TranscriptView";
 
 interface Deps {
-  transcribe?: typeof defaultTranscribe;
+  createTranscription?: typeof defaultCreate;
   extractAudio?: typeof defaultExtractAudio;
 }
 
 interface Props extends ScreenProps {
+  /** Сервер принял файл: задача создана; `file` — исходный (для плеера с видеорядом). */
+  onCreated: (job: TranscriptionJob, file: File) => void;
   /** Подмена API в тестах. */
   deps?: Deps;
 }
 
-export function TranscribeScreen({ config, onDirtyChange, deps }: Props) {
-  const transcribe = deps?.transcribe ?? defaultTranscribe;
+/** Приём файлов: модель, язык, зона загрузки, микрофон; распознаёт фоновая очередь. */
+export function TranscribeScreen({ config, onDirtyChange, onCreated, deps }: Props) {
+  const createTranscription = deps?.createTranscription ?? defaultCreate;
   const extractAudio = deps?.extractAudio ?? defaultExtractAudio;
   const models = config.models.filter((m) => m.kind === "transcription");
   const [model, setModel] = useState(config.default_transcription);
@@ -33,9 +36,10 @@ export function TranscribeScreen({ config, onDirtyChange, deps }: Props) {
   const controllerRef = useRef<AbortController | null>(null);
   const busy = isBusy(state.phase);
 
+  // после создания задачи работа на сервере — уйти со страницы можно
   useEffect(() => {
-    onDirtyChange(busy || state.phase.name === "done");
-  }, [busy, state.phase.name, onDirtyChange]);
+    onDirtyChange(busy);
+  }, [busy, onDirtyChange]);
 
   useEffect(
     () => () => {
@@ -47,7 +51,7 @@ export function TranscribeScreen({ config, onDirtyChange, deps }: Props) {
   const run = async (file: File) => {
     // запись с микрофона может закончиться, пока идёт операция с другим файлом
     if (controllerRef.current !== null) {
-      setRejection("Дождитесь окончания текущего распознавания или отмените его");
+      setRejection("Дождитесь окончания текущей загрузки или отмените её");
       return;
     }
     const plan = planUpload(file, config.max_upload_mb);
@@ -72,22 +76,20 @@ export function TranscribeScreen({ config, onDirtyChange, deps }: Props) {
         });
         const tooLarge = extractedTooLarge(upload.size, config.max_upload_mb);
         if (tooLarge !== null) throw new Error(tooLarge);
-        dispatch({ type: "extracted", opId, file: upload });
+        dispatch({ type: "extracted", opId });
       }
-      const result = await transcribe(
+      const job = await createTranscription(
         upload,
-        { model, language: language === "" ? null : language },
+        { model, language: language === "" ? null : language, title: null },
         {
           signal,
           onUploadProgress: (progress) => {
             dispatch({ type: "uploadProgress", opId, progress });
           },
-          onUploaded: () => {
-            dispatch({ type: "uploaded", opId, now: Date.now() });
-          },
         },
       );
-      dispatch({ type: "done", opId, result });
+      dispatch({ type: "created", opId });
+      onCreated(job, file);
     } catch (error) {
       if (isAbortError(error)) return;
       dispatch({ type: "fail", opId, message: userMessage(error) });
@@ -105,18 +107,6 @@ export function TranscribeScreen({ config, onDirtyChange, deps }: Props) {
     controllerRef.current = null;
     dispatch({ type: "cancel" });
   };
-
-  if (state.phase.name === "done" && state.source !== null) {
-    return (
-      <TranscriptView
-        result={state.phase.result}
-        source={state.source}
-        onReset={() => {
-          dispatch({ type: "reset" });
-        }}
-      />
-    );
-  }
 
   return (
     <div className="stack transcribe">

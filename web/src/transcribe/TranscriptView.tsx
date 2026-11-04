@@ -1,15 +1,30 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import type { Transcription } from "../api/types";
 import { CopyButton } from "../components/CopyButton";
 import { EXPORT_FORMATS, EXPORTERS, formatClock, type ExportFormat } from "./exports";
 import { SegmentRow } from "./SegmentRow";
 import { activeIndex, groupWords } from "./words";
-import { baseName, isVideo } from "./media";
 
 interface Props {
   result: Transcription;
-  source: File;
-  onReset: () => void;
+  title: string;
+  /** Вместо заголовка (например, поле переименования). */
+  titleSlot?: ReactNode;
+  /** Что играть: исходный файл (свежая загрузка) или Opus из истории; `null` — аудио нет. */
+  media: Blob | null;
+  video: boolean;
+  /** Имя скачиваемых файлов без расширения. */
+  downloadName: string;
+  /** Действия записи под скачиванием (переименование, удаление). */
+  actions?: ReactNode;
 }
 
 const MIME: Record<ExportFormat, string> = {
@@ -31,37 +46,45 @@ function download(content: string, name: string, type: string): void {
 }
 
 /** Результат: плеер, текст, сегменты с перемоткой, скачивание. */
-export function TranscriptView({ result, source, onReset }: Props) {
+export function TranscriptView({
+  result,
+  title,
+  titleSlot,
+  media,
+  video,
+  downloadName,
+  actions,
+}: Props) {
   const mediaRef = useRef<HTMLVideoElement & HTMLAudioElement>(null);
   const [playerFailed, setPlayerFailed] = useState(false);
+  const seekable = media !== null && !playerFailed;
   const [active, setActive] = useState<{ segment: number; word: number | null } | null>(null);
   const groups = useMemo(() => groupWords(result.segments, result.words), [result]);
-  const video = isVideo(source);
 
   // object URL не читает файл в память (важно для видео на гигабайты); src ставится напрямую,
   // чтобы URL жил ровно столько, сколько элемент
   useEffect(() => {
     const element = mediaRef.current;
-    if (element === null) return undefined;
-    const url = URL.createObjectURL(source);
+    if (element === null || media === null) return undefined;
+    const url = URL.createObjectURL(media);
     element.src = url;
     return () => {
       element.removeAttribute("src");
       URL.revokeObjectURL(url);
     };
-  }, [source]);
+  }, [media]);
 
   // стабильная ссылка: строки сегментов мемоизированы
   const seek = useCallback(
     (start: number) => {
       const element = mediaRef.current;
-      if (element === null || playerFailed) return;
+      if (element === null || !seekable) return;
       element.currentTime = start;
       element.play().catch(() => {
         // автовоспроизведение запрещено — пользователь нажмёт play сам
       });
     },
-    [playerFailed],
+    [seekable],
   );
 
   const onTimeUpdate = () => {
@@ -85,7 +108,6 @@ export function TranscriptView({ result, source, onReset }: Props) {
   };
 
   const empty = result.text.trim() === "" && result.segments.length === 0;
-  const name = baseName(source.name);
   const mediaProps = {
     ref: mediaRef,
     controls: true,
@@ -100,7 +122,7 @@ export function TranscriptView({ result, source, onReset }: Props) {
     <div className="result">
       <aside className="result-side">
         <div className="result-head">
-          <h2 className="result-title">{source.name}</h2>
+          {titleSlot ?? <h2 className="result-title">{title}</h2>}
           <dl className="result-meta">
             {result.language !== "" && (
               <div>
@@ -114,12 +136,14 @@ export function TranscriptView({ result, source, onReset }: Props) {
             </div>
           </dl>
         </div>
-        {!playerFailed &&
+        {media !== null &&
+          !playerFailed &&
           (video ? (
             <video className="player player-video" {...mediaProps} />
           ) : (
             <audio className="player" {...mediaProps} />
           ))}
+        {media === null && <p className="muted small">Аудио для этой записи не сохранилось</p>}
         {playerFailed && <p className="muted">Браузер не может воспроизвести этот файл</p>}
         <div className="downloads">
           <span className="muted small">Скачать</span>
@@ -130,7 +154,7 @@ export function TranscriptView({ result, source, onReset }: Props) {
                 type="button"
                 className="button-chip"
                 onClick={() => {
-                  download(EXPORTERS[format](result), `${name}.${format}`, MIME[format]);
+                  download(EXPORTERS[format](result), `${downloadName}.${format}`, MIME[format]);
                 }}
               >
                 {format}
@@ -138,9 +162,7 @@ export function TranscriptView({ result, source, onReset }: Props) {
             ))}
           </div>
         </div>
-        <button type="button" className="button-secondary result-reset" onClick={onReset}>
-          Распознать другой файл
-        </button>
+        {actions}
       </aside>
 
       {empty ? (
@@ -157,7 +179,7 @@ export function TranscriptView({ result, source, onReset }: Props) {
           <section className="sheet">
             <div className="sheet-head">
               <h3>Сегменты</h3>
-              {!playerFailed && (
+              {seekable && (
                 <span className="muted small">Нажмите на слово или таймкод, чтобы перемотать</span>
               )}
             </div>
@@ -169,7 +191,7 @@ export function TranscriptView({ result, source, onReset }: Props) {
                   words={groups[index] ?? []}
                   active={active?.segment === index}
                   activeWord={active?.segment === index ? active.word : null}
-                  seekable={!playerFailed}
+                  seekable={seekable}
                   onSeek={seek}
                 />
               ))}

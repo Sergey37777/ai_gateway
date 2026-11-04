@@ -1,5 +1,3 @@
-import { useEffect, useState } from "react";
-import { formatClock } from "./exports";
 import { progressValue, type Phase } from "./state";
 
 interface Props {
@@ -11,21 +9,8 @@ function percent(fraction: number): string {
   return `${String(Math.round(fraction * 100))}%`;
 }
 
-/** Ход операции: извлечение → загрузка → распознавание, с отменой. */
+/** Ход приёма: извлечение → загрузка, с отменой (дальше ход показывает запись истории). */
 export function Progress({ phase, onCancel }: Props) {
-  const [now, setNow] = useState(() => Date.now());
-  const transcribing = phase.name === "transcribing";
-
-  useEffect(() => {
-    if (!transcribing) return undefined;
-    const timer = window.setInterval(() => {
-      setNow(Date.now());
-    }, 1000);
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [transcribing]);
-
   let stage: string;
   let detail: string | null;
   switch (phase.name) {
@@ -36,10 +21,6 @@ export function Progress({ phase, onCancel }: Props) {
     case "uploading":
       stage = "Загрузка…";
       detail = percent(phase.progress);
-      break;
-    case "transcribing":
-      stage = "Распознавание…";
-      detail = formatClock(Math.max(0, (now - phase.startedAt) / 1000));
       break;
     default:
       return null;

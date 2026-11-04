@@ -86,3 +86,56 @@ test("401 от API — ключ сбрасывается, диалог «Клю�
   expect(screen.getByText("Ключ не подошёл")).toBeInTheDocument();
   expect(getApiKey()).toBeNull();
 });
+
+function stubRoutes(routes: Record<string, unknown>): void {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn<typeof fetch>((input) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const body = routes[url];
+      return Promise.resolve(
+        body === undefined
+          ? new Response(JSON.stringify({ error: { message: "нет" } }), { status: 404 })
+          : new Response(JSON.stringify(body)),
+      );
+    }),
+  );
+}
+
+test("вкладка «История» открывает поиск по истории", async () => {
+  stubRoutes({ "/ui/config": CONFIG, "/api/transcriptions": { data: [], next: null } });
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(await screen.findByRole("tab", { name: "История" }));
+  expect(window.location.hash).toBe("#history");
+  expect(await screen.findByRole("searchbox", { name: "Поиск по истории" })).toBeInTheDocument();
+});
+
+test("#history/<id> открывает запись", async () => {
+  window.location.hash = "#history/job-1";
+  stubRoutes({
+    "/ui/config": CONFIG,
+    "/api/transcriptions/job-1": {
+      id: "job-1",
+      status: "queued",
+      source: "ui",
+      title: "Лекция",
+      filename: "a.wav",
+      model: "whisper-base",
+      language: null,
+      duration: null,
+      progress: 0,
+      queue_position: 1,
+      error: null,
+      has_audio: false,
+      retryable: false,
+      created_at: "2026-11-04T18:00:00Z",
+      started_at: null,
+      finished_at: null,
+    },
+  });
+  render(<App />);
+  expect(await screen.findByRole("heading", { name: "Лекция" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "История" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByText("В очереди: 1-я")).toBeInTheDocument();
+});

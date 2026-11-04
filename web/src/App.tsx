@@ -2,22 +2,20 @@ import { useCallback, useEffect, useState } from "react";
 import { getApiKey, onUnauthorized, setApiKey } from "./api/apiKey";
 import { fetchConfig } from "./api/config";
 import { userMessage } from "./api/errors";
-import type { UiConfig } from "./api/types";
+import type { TranscriptionJob, UiConfig } from "./api/types";
 import { ApiKeyDialog } from "./components/ApiKeyDialog";
 import { ErrorBanner } from "./components/ErrorBanner";
 import { ChatScreen } from "./chat/ChatScreen";
+import { HistoryScreen } from "./history/HistoryScreen";
+import { RecordScreen } from "./history/RecordScreen";
+import { parseRoute, recordHash, type Tab } from "./route";
 import { TranscribeScreen } from "./transcribe/TranscribeScreen";
-
-type Tab = "transcribe" | "chat";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "transcribe", label: "Распознавание" },
+  { id: "history", label: "История" },
   { id: "chat", label: "Чат" },
 ];
-
-function tabFromHash(hash: string): Tab {
-  return hash === "#chat" ? "chat" : "transcribe";
-}
 
 type ConfigState =
   | { status: "loading" }
@@ -26,10 +24,13 @@ type ConfigState =
 
 export function App() {
   const [configState, setConfigState] = useState<ConfigState>({ status: "loading" });
-  const [tab, setTab] = useState<Tab>(() => tabFromHash(window.location.hash));
+  const [route, setRoute] = useState(() => parseRoute(window.location.hash));
+  const { tab } = route;
+  // только что загруженные файлы: запись истории играет их (с видеорядом), а не Opus
+  const [recentFiles, setRecentFiles] = useState<ReadonlyMap<string, File>>(() => new Map());
   // null — диалог скрыт; строка — показан с этим сообщением ("" — без сообщения)
   const [keyPrompt, setKeyPrompt] = useState<string | null>(null);
-  const [dirty, setDirty] = useState<Record<Tab, boolean>>({ transcribe: false, chat: false });
+  const [dirty, setDirty] = useState({ transcribe: false, chat: false });
 
   const load = useCallback(() => {
     fetchConfig().then(
@@ -49,7 +50,7 @@ export function App() {
 
   useEffect(() => {
     const onHash = () => {
-      setTab(tabFromHash(window.location.hash));
+      setRoute(parseRoute(window.location.hash));
     };
     window.addEventListener("hashchange", onHash);
     return () => {
@@ -68,7 +69,7 @@ export function App() {
   const anyDirty = dirty.transcribe || dirty.chat;
   useEffect(() => {
     if (!anyDirty) return undefined;
-    // истории нет: перезагрузка страницы теряет результат и диалог
+    // идёт загрузка файла или есть несохранённый диалог: перезагрузка их потеряет
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
       event.preventDefault();
     };
@@ -86,9 +87,14 @@ export function App() {
   }, []);
 
   const selectTab = (id: Tab) => {
-    setTab(id);
+    setRoute({ tab: id, recordId: null });
     window.location.hash = id;
   };
+
+  const onCreated = useCallback((job: TranscriptionJob, file: File) => {
+    setRecentFiles((files) => new Map(files).set(job.id, file));
+    window.location.hash = recordHash(job.id);
+  }, []);
 
   return (
     <div className="app">
@@ -151,7 +157,32 @@ export function App() {
               aria-labelledby="tab-transcribe"
               hidden={tab !== "transcribe"}
             >
-              <TranscribeScreen config={configState.config} onDirtyChange={onTranscribeDirty} />
+              <TranscribeScreen
+                config={configState.config}
+                onDirtyChange={onTranscribeDirty}
+                onCreated={onCreated}
+              />
+            </section>
+            <section
+              role="tabpanel"
+              id="panel-history"
+              aria-labelledby="tab-history"
+              hidden={tab !== "history"}
+            >
+              {/* история монтируется только открытой: скрытая не опрашивает сервер */}
+              {tab === "history" &&
+                (route.recordId === null ? (
+                  <HistoryScreen />
+                ) : (
+                  <RecordScreen
+                    key={route.recordId}
+                    id={route.recordId}
+                    localFile={recentFiles.get(route.recordId) ?? null}
+                    onDeleted={() => {
+                      window.location.hash = "history";
+                    }}
+                  />
+                ))}
             </section>
             <section
               role="tabpanel"
