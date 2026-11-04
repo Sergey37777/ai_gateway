@@ -4,6 +4,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
+# JSON-объект: значения разбираются через isinstance, без Any
+JsonObject = dict[str, object]
+
 
 @dataclass(frozen=True, slots=True)
 class Word:
