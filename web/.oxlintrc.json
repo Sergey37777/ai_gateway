@@ -30,7 +30,12 @@
     "typescript/no-unsafe-return": "error",
     "typescript/no-unsafe-argument": "error",
     "typescript/no-unnecessary-type-assertion": "error",
-    "typescript/switch-exhaustiveness-check": "error",
+    "typescript/switch-exhaustiveness-check": [
+      "error",
+      {
+        "considerDefaultExhaustiveForUnions": true
+      }
+    ],
     "typescript/restrict-template-expressions": "error",
     "typescript/no-non-null-assertion": "error",
     "import/no-cycle": "error",
@@ -40,6 +45,8 @@
       {
         "allow": ["**/*.css", "@testing-library/jest-dom/vitest", "highlight.js/styles/*"]
       }
-    ]
+    ],
+    "typescript/consistent-return": "off",
+    "consistent-return": "off"
   }
 }
