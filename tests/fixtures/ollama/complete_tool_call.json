@@ -1,0 +1,40 @@
+{
+  "status": 200,
+  "body": {
+    "id": "chatcmpl-335",
+    "object": "chat.completion",
+    "created": 1793817913,
+    "model": "qwen3:0.6b",
+    "system_fingerprint": "fp_ollama",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "",
+          "reasoning": "Okay, the user is asking about the weather in Paris. I need to use the weather tool provided. Let me check the function parameters. The function is get_weather, which requires a city parameter. The user specified Paris, so I should call the function with city set to Paris. I'll make sure to format the tool call correctly in JSON within the specified XML tags.\n",
+          "tool_calls": [
+            {
+              "id": "call_ffpnke84",
+              "index": 0,
+              "type": "function",
+              "function": {
+                "name": "get_weather",
+                "arguments": "{\"city\":\"Paris\"}"
+              }
+            }
+          ]
+        },
+        "finish_reason": "tool_calls"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 143,
+      "prompt_tokens_details": {
+        "cached_tokens": 1
+      },
+      "completion_tokens": 99,
+      "total_tokens": 242
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "status": 200,
+  "body": {
+    "id": "chatcmpl-213",
+    "object": "chat.completion",
+    "created": 1793817924,
+    "model": "qwen3:0.6b",
+    "system_fingerprint": "fp_ollama",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "Привет! Как могу помочь вам?"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 19,
+      "prompt_tokens_details": {
+        "cached_tokens": 3
+      },
+      "completion_tokens": 12,
+      "total_tokens": 31
+    }
+  }
+}
