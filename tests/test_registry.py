@@ -7,7 +7,7 @@ import pytest
 import yaml
 
 from ai_gateway.errors import GatewayError, model_unavailable
-from ai_gateway.registry import ModelRegistry, OllamaSpec, RegistryError
+from ai_gateway.registry import ModelRegistry, OllamaSpec, RegistryError, spec_kind
 
 DATA: dict[str, Any] = {
     "default_transcription": "whisper-large-v3-turbo",
@@ -236,3 +236,8 @@ def test_gateway_error_body():
 )
 def test_gateway_error_type(status, error_type):
     assert GatewayError(status, "c", "m").error_type == error_type
+
+
+def test_spec_kind(registry):
+    assert spec_kind(registry.resolve("whisper-large-v3", "transcription")) == "transcription"
+    assert spec_kind(registry.resolve("qwen3-14b", "chat")) == "chat"

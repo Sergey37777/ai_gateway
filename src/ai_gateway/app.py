@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from loguru import logger
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from ai_gateway.api import audio, chat, health, models
+from ai_gateway.api import audio, chat, health, models, ui
 from ai_gateway.api.deps import api_key_valid, invalid_api_key
 from ai_gateway.backends import build_backend
 from ai_gateway.backends.base import ChatBackend
@@ -233,6 +233,7 @@ def create_app(
     app.include_router(chat.router, prefix="/v1")
     app.include_router(models.router, prefix="/v1")
     app.include_router(health.router)
+    app.include_router(ui.router)
 
     # последний добавленный middleware — внешний: request id оборачивает всё (включая 401/413),
     # ключ проверяется раньше, чем считается размер тела

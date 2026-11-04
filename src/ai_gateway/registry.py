@@ -39,6 +39,11 @@ _SPEC_ADAPTER: TypeAdapter[WhisperSpec | OllamaSpec] = TypeAdapter(ModelSpec)
 ModelKind = Literal["transcription", "chat"]
 
 
+def spec_kind(spec: WhisperSpec | OllamaSpec) -> ModelKind:
+    """Тип модели: whisper распознаёт речь, ollama — чат."""
+    return "transcription" if isinstance(spec, WhisperSpec) else "chat"
+
+
 class RegistryError(ValueError):
     """Ошибка конфигурации реестра моделей."""
 
@@ -134,8 +139,7 @@ class ModelRegistry:
         spec = self._specs.get(key)
         if spec is None:
             raise GatewayError(404, "model_not_found", f"Модель '{name}' не найдена", param="model")
-        expected = WhisperSpec if kind == "transcription" else OllamaSpec
-        if not isinstance(spec, expected):
+        if spec_kind(spec) != kind:
             raise GatewayError(
                 400,
                 "model_not_supported",
