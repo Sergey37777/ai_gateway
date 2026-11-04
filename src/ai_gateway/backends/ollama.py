@@ -60,13 +60,18 @@ def _is_oom(text: str) -> bool:
 def _map_error(spec: OllamaSpec, status: int | None, message: str, raw: str) -> GatewayError:
     """Ошибка Ollama (HTTP-статус или чанк `error` посреди стрима) → ошибка шлюза."""
     if status == 404:
+        logger.warning("Ollama: модель {} не найдена, тело {}", spec.model, raw[:_LOG_LIMIT])
         return model_unavailable(
             f"Модель {spec.model} не скачана в Ollama: выполните `ollama pull {spec.model}`"
         )
-    if status == 503 or _is_oom(message) or _is_oom(raw):
-        return model_unavailable(f"Ollama не смогла выполнить запрос к модели {spec.model}")
     if status == 400:
         return GatewayError(400, "invalid_request_error", message)
+    # OOM — только в тексте 500 или в чанке-ошибке посреди стрима (status None), спец. §6.1
+    if status == 503 or (status in (500, None) and (_is_oom(message) or _is_oom(raw))):
+        logger.warning(
+            "Ollama недоступна или не хватает памяти: статус {}, тело {}", status, raw[:_LOG_LIMIT]
+        )
+        return model_unavailable(f"Ollama не смогла выполнить запрос к модели {spec.model}")
     logger.warning("Ollama вернула ошибку: статус {}, тело {}", status, raw[:_LOG_LIMIT])
     return GatewayError(502, "upstream_error", "Ошибка Ollama")
 

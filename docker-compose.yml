@@ -29,6 +29,8 @@ services:
   # Порты наружу не публикуются: единственная точка входа — шлюз.
   # Отладка: docker compose exec ollama ollama ps|pull|list
   ollama:
+    # при смене версии перезаписать фикстуры: uv run python scripts/record_ollama_fixtures.py
+    # (нормализация tool_calls не реализована, т.к. 0.40.8 отдаёт их корректно)
     image: ollama/ollama:0.40.8
     environment:
       OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-10m}

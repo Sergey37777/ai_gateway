@@ -94,6 +94,12 @@ ERROR_CASES = [
     ),
     (httpx.Response(503, json={"error": "server busy"}), 503, "model_unavailable"),
     (httpx.Response(500, text="boom"), 502, "upstream_error"),
+    # маркер OOM в 400 — это ошибка запроса, а не нехватка памяти
+    (
+        httpx.Response(400, json={"error": {"message": "bad input: unexpected EOF"}}),
+        400,
+        "invalid_request_error",
+    ),
 ]
 
 

@@ -4,7 +4,7 @@ import json
 import time
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import AsyncExitStack
-from typing import Annotated
+from typing import Annotated, Any
 
 import anyio
 from fastapi import APIRouter, Depends
@@ -69,13 +69,15 @@ async def sse_events(
     """Чанки Ollama → SSE; ошибка в середине потока — событие `error` без `[DONE]`."""
     started = time.monotonic() if started is None else started
     usage: object = None
-    outcome = "ok"
+    # пока [DONE] не отправлен, любое завершение (aclose при обрыве клиента) — отключение
+    outcome = "client_disconnected"
     try:
         async for chunk in chunks:
             if chunk.get("usage"):
                 usage = chunk["usage"]
             yield _event(normalize(chunk))
         yield b"data: [DONE]\n\n"
+        outcome = "ok"
     except GatewayError as error:
         outcome = error.code
         yield _event(error.to_body())
@@ -85,8 +87,10 @@ async def sse_events(
         yield _event(internal_error().to_body())
     finally:
         # сюда же попадаем при aclose() (обрыв клиента): закрывает соединение с Ollama
+        # под shield: при обрыве клиента (ASGI 2.3) scope уже отменён, закрытие не должно прерваться
         try:
-            await stack.aclose()
+            with anyio.CancelScope(shield=True):
+                await stack.aclose()
         finally:
             _log_chat(model, stream=True, started=started, usage=usage, outcome=outcome)
 
@@ -99,14 +103,17 @@ class SseResponse(StreamingResponse):
     (asyncgen-хук цикла). Здесь он закрывается явно, под shield — отмена не прервёт `aclose`.
     """
 
+    def __init__(self, content: AsyncGenerator[bytes], **kwargs: Any) -> None:  # noqa: ANN401
+        # kwargs пробрасываются в StreamingResponse как есть (media_type, headers, ...)
+        super().__init__(content, **kwargs)
+        self._generator = content
+
     async def stream_response(self, send: Send) -> None:
         try:
             await super().stream_response(send)
         finally:
-            aclose = getattr(self.body_iterator, "aclose", None)
-            if aclose is not None:
-                with anyio.CancelScope(shield=True):
-                    await aclose()
+            with anyio.CancelScope(shield=True):
+                await self._generator.aclose()
 
 
 @router.post("/chat/completions")

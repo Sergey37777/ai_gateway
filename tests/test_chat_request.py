@@ -47,6 +47,12 @@ def test_unset_fields_not_added() -> None:
     assert "stream" not in normalize_request(_request(), SPEC)
 
 
+def test_keep_alive_dropped() -> None:
+    # политику памяти задаёт только OLLAMA_KEEP_ALIVE контейнера, клиент её менять не может
+    payload = normalize_request(_request(keep_alive=-1), SPEC)
+    assert "keep_alive" not in payload
+
+
 def test_tool_history_passes_through() -> None:
     messages: list[dict[str, object]] = [
         {"role": "user", "content": "2+3?"},

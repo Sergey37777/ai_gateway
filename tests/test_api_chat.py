@@ -1,8 +1,11 @@
 """POST /v1/chat/completions: JSON, SSE, ошибки, лимиты, лог и OpenAI SDK."""
 
+import asyncio
+import copy
 import io
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, MutableMapping
+from typing import Any
 
 import httpx
 import httpx2
@@ -15,9 +18,16 @@ from ai_gateway.app import configure_logging, create_app
 from ai_gateway.backends.ollama import OllamaChatBackend
 from ai_gateway.chat import ChunkNormalizer
 from ai_gateway.config import Settings
-from ai_gateway.registry import OllamaSpec
+from ai_gateway.lifecycle import ModelManager
+from ai_gateway.registry import ModelRegistry, OllamaSpec
 from tests.conftest import REGISTRY_DATA
-from tests.fakes import FIXTURES_DIR, FakeOllama, TrackingStream, parse_sse
+from tests.fakes import (
+    FIXTURES_DIR,
+    FakeOllama,
+    FakeTranscriptionBackend,
+    TrackingStream,
+    parse_sse,
+)
 
 MESSAGES = [{"role": "user", "content": "Привет"}]
 
@@ -105,6 +115,117 @@ async def test_sse_close_closes_upstream():
     await backend.aclose()
 
 
+async def test_sse_close_logs_client_disconnected():
+    from contextlib import AsyncExitStack
+
+    sink = io.StringIO()
+    configure_logging("INFO", sink=sink)
+
+    async def chunks() -> AsyncIterator[dict[str, object]]:
+        for i in range(10):
+            yield {"id": str(i), "choices": []}
+
+    spec = OllamaSpec(name="qwen3-14b", backend="ollama", model="qwen3:14b")
+    agen = sse_events(chunks(), ChunkNormalizer(spec), AsyncExitStack(), model="qwen3-14b")
+    await anext(agen)
+    await agen.aclose()
+    assert "итог=client_disconnected" in sink.getvalue()
+    assert "итог=ok" not in sink.getvalue()
+
+
+async def test_sse_complete_logs_ok():
+    from contextlib import AsyncExitStack
+
+    sink = io.StringIO()
+    configure_logging("INFO", sink=sink)
+
+    async def chunks() -> AsyncIterator[dict[str, object]]:
+        yield {"id": "0", "choices": []}
+
+    spec = OllamaSpec(name="qwen3-14b", backend="ollama", model="qwen3:14b")
+    events = [e async for e in sse_events(chunks(), ChunkNormalizer(spec), AsyncExitStack())]
+    assert events[-1] == b"data: [DONE]\n\n"
+    assert "итог=ok" in sink.getvalue()
+
+
+class SlowStream(TrackingStream):
+    """Тот же поток, но с паузами между кусками — клиент успевает отключиться."""
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        for start in range(0, len(self.data), 64):
+            await asyncio.sleep(0.01)
+            yield self.data[start : start + 64]
+
+
+@pytest.mark.parametrize("disconnect_delay", [0.01, 0.2], ids=["before_headers", "mid_stream"])
+async def test_client_disconnect_asgi_2_3_closes_upstream(disconnect_delay: float) -> None:
+    """Прод-путь uvicorn (spec_version 2.3): обрыв клиента закрывает соединение с Ollama."""
+    streams: list[SlowStream] = []
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(0.05)  # Ollama грузит модель / обрабатывает промпт
+        stream = SlowStream((FIXTURES_DIR / "stream_reasoning.sse").read_bytes())
+        streams.append(stream)
+        return httpx.Response(200, headers={"content-type": "text/event-stream"}, stream=stream)
+
+    registry = ModelRegistry.from_dict(copy.deepcopy(REGISTRY_DATA), default_ttl=600)
+    manager = ModelManager(registry.whisper_specs(), lambda _spec: FakeTranscriptionBackend())
+    backend = OllamaChatBackend(
+        "http://ollama", read_timeout=5, transport=httpx.MockTransport(handler)
+    )
+    app = create_app(
+        Settings(_env_file=None, device="cpu"),
+        registry=registry,
+        manager=manager,
+        chat_backend=backend,
+    )
+    body = json.dumps({"model": "qwen3-14b", "stream": True, "messages": MESSAGES}).encode()
+    body_sent = False
+    disconnected = asyncio.Event()
+    asyncio.get_running_loop().call_later(disconnect_delay, disconnected.set)
+
+    async def receive() -> dict[str, object]:
+        nonlocal body_sent
+        if not body_sent:
+            body_sent = True
+            return {"type": "http.request", "body": body, "more_body": False}
+        await disconnected.wait()
+        return {"type": "http.disconnect"}
+
+    sent: list[str] = []
+
+    async def send(message: MutableMapping[str, Any]) -> None:
+        sent.append(str(message["type"]))
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0", "spec_version": "2.3"},
+        "http_version": "1.1",
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "raw_path": b"/v1/chat/completions",
+        "query_string": b"",
+        "headers": [
+            (b"content-type", b"application/json"),
+            (b"content-length", str(len(body)).encode()),
+        ],
+        "scheme": "http",
+        "server": ("test", 80),
+        "client": ("test", 1),
+        "root_path": "",
+        "app": None,
+        "state": {},
+    }
+    try:
+        await app(scope, receive, send)
+        # без ожидания сборщика мусора: закрытие должно быть детерминированным
+        assert [s.closed for s in streams] == [True] * len(streams)
+        if disconnect_delay > 0.1:
+            assert streams, "поток Ollama должен был открыться"
+    finally:
+        await backend.aclose()
+
+
 async def test_unknown_model_404(make_client):
     client = await make_client()
     r = await client.post("/v1/chat/completions", json=chat_body(model="nope"))
@@ -133,6 +254,7 @@ async def test_invalid_image_url_400(make_client):
         json=chat_body(messages=[{"role": "user", "content": content}]),
     )
     assert r.status_code == 400
+    assert r.json()["error"]["code"] == "invalid_image_url"
     assert client.ollama.requests == []
 
 

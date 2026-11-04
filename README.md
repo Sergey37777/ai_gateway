@@ -112,7 +112,9 @@ OpenAI SDK:
 ```python
 from openai import OpenAI
 
-client = OpenAI(base_url="http://<host>:8000/v1", api_key="не-используется-или-AIGW_API_KEY")
+client = OpenAI(
+    base_url="http://<host>:8000/v1", api_key="sk-local"
+)  # любой ASCII; если задан AIGW_API_KEY — его значение
 with open("speech.mp3", "rb") as f:
     result = client.audio.transcriptions.create(model="whisper-1", file=f)
 print(result.text)
@@ -131,14 +133,17 @@ curl http://<host>:8000/v1/audio/transcriptions \
 ## Чат (`/v1/chat/completions`)
 
 Тело запроса — по схеме OpenAI Chat Completions; поле `model` обязательно (имя или алиас из
-`models.yaml`, модель должна быть с `backend: ollama`). Неизвестные поля передаются в Ollama.
+`models.yaml`, модель должна быть с `backend: ollama`). Неизвестные поля передаются в Ollama, кроме `keep_alive`: он отбрасывается, время простоя
+модели задаёт только `OLLAMA_KEEP_ALIVE` контейнера.
 
 Без стрима:
 
 ```python
 from openai import OpenAI
 
-client = OpenAI(base_url="http://<host>:8000/v1", api_key="не-используется-или-AIGW_API_KEY")
+client = OpenAI(
+    base_url="http://<host>:8000/v1", api_key="sk-local"
+)  # любой ASCII; если задан AIGW_API_KEY — его значение
 resp = client.chat.completions.create(
     model="qwen3-14b",
     messages=[{"role": "user", "content": "Объясни, что такое KV-кэш, в двух предложениях."}],
