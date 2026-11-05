@@ -9,6 +9,8 @@ const HELLO_MP4 = fileURLToPath(new URL("fixtures/hello.mp4", import.meta.url));
 test("аудио ≤ лимита: текст и скачивание srt", async ({ page }) => {
   await page.goto("/");
   await page.getByLabel("Аудио или видео файл").setInputFiles(HELLO_WAV);
+  // задача фоновая: UI сразу открывает запись истории
+  await expect(page).toHaveURL(/#history\/[0-9a-f-]+$/);
   await expect(page.locator(".transcript-text")).toContainText(/hello/i, { timeout: 120_000 });
   // пословные таймкоды: слова видны и кликабельны
   const firstWord = page.locator(".word").first();
@@ -47,7 +49,9 @@ test("видео больше лимита: извлечение аудио в �
   const uploaded = await page.evaluate(() => JSON.stringify(Reflect.get(window, "__uploaded")));
   expect(uploaded).toContain('"name":"hello.mka"');
   expect(uploaded).not.toContain("hello.mp4");
+  // свежая запись играет исходное видео, а название — по нему, а не по дорожке
   await expect(page.locator("video")).toBeAttached();
+  await expect(page.locator(".result-title")).toHaveText("hello.mp4");
 });
 
 test("запись с микрофона", async ({ page }) => {
@@ -57,9 +61,7 @@ test("запись с микрофона", async ({ page }) => {
   await expect(stop).toBeVisible();
   await page.waitForTimeout(3000);
   await stop.click();
-  await expect(page.getByRole("button", { name: "Распознать другой файл" })).toBeVisible({
-    timeout: 120_000,
-  });
+  await expect(page.locator(".transcript-text")).toBeVisible({ timeout: 120_000 });
   await expect(page.getByRole("alert")).toHaveCount(0);
   await expect(page.locator(".result-title")).toHaveText(/^recording-\d{6}\.(webm|ogg|m4a)$/);
 });

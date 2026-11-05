@@ -132,6 +132,8 @@ test("видео больше лимита — сначала извлечени
   });
   expect(extractAudio.mock.calls[0]?.[0]).toBe(video);
   expect(createTranscription.mock.calls[0]?.[0]).toBe(audio);
+  // название записи — по исходному видео, а не по извлечённой дорожке
+  expect(createTranscription.mock.calls[0]?.[1].title).toBe("movie.mp4");
   // наверх уходит исходное видео — для плеера с картинкой
   expect(onCreated.mock.calls[0]?.[1]).toBe(video);
 });

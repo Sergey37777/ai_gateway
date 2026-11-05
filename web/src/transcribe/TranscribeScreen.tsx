@@ -80,7 +80,12 @@ export function TranscribeScreen({ config, onDirtyChange, onCreated, deps }: Pro
       }
       const job = await createTranscription(
         upload,
-        { model, language: language === "" ? null : language, title: null },
+        {
+          model,
+          language: language === "" ? null : language,
+          // на сервер уходит извлечённая дорожка (.mka) — название берём у исходного видео
+          title: plan.kind === "extract" ? file.name : null,
+        },
         {
           signal,
           onUploadProgress: (progress) => {

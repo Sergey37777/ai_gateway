@@ -53,12 +53,12 @@ Web UI (`web/`, Node 26+, npm; зависимости — только `npm inst
 
 ```bash
 cd web && npm ci
-npm run dev                  # Vite на :5173, /v1 /health /ui проксируются на шлюз :8000
+npm run dev                  # Vite на :5173, /v1 /api /health /ui проксируются на шлюз :8000
 npm test                     # Vitest + Testing Library (jsdom), без сети
 npx vitest run src/chat      # часть тестов
 npm run lint                 # oxlint --type-aware + prettier --check
 npm run typecheck            # tsc -b (TypeScript 7)
-npm run test:e2e             # Playwright: сборка + реальный шлюз на :8765 (CPU, лимит 1 МиБ)
+npm run test:e2e             # Playwright: сборка + реальный шлюз на :8765 (CPU, лимит 1 МиБ, БД aigw_e2e в dev-PostgreSQL)
 ```
 
 ## Архитектура

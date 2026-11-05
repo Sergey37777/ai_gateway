@@ -127,7 +127,8 @@ npm run lint && npm run typecheck
 npm run build                    # web/dist — его раздаёт шлюз (AIGW_WEB_DIR=web/dist)
 npx playwright install chromium  # однократно
 npm run test:e2e                 # сборка + реальный шлюз на :8765 (whisper на CPU, лимит 1 МиБ);
-                                 # чат-тест пропускается, если ollama-dev не запущена
+                                 # нужен dev-PostgreSQL (compose.dev.yaml): БД aigw_e2e пересоздаётся
+                                 # при каждом запуске; чат-тест пропускается без ollama-dev
 ```
 
 ## Развёртывание на Windows + NVIDIA (Docker Desktop)
