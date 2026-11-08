@@ -77,3 +77,73 @@ export interface TranscriptionPage {
   data: TranscriptionJob[];
   next: string | null;
 }
+
+/** Настройки диалога в API (`/api/conversations`). */
+export interface ApiChatSettings {
+  model: string;
+  system_prompt: string;
+  temperature: number | null;
+  max_tokens: number | null;
+  reasoning_effort: "none" | "low" | "medium" | "high" | null;
+}
+
+export interface ApiUsage {
+  prompt_tokens: number;
+  completion_tokens: number;
+}
+
+export interface ApiUserMessage {
+  role: "user";
+  text: string;
+  images: { name: string; data_url: string }[];
+}
+
+export interface ApiAssistantMessage {
+  role: "assistant";
+  text: string;
+  reasoning: string;
+  status: "done" | "stopped" | "error";
+  error: string | null;
+  usage: ApiUsage | null;
+  model: string | null;
+}
+
+export type ApiMessage = ApiUserMessage | ApiAssistantMessage;
+
+/** Диалог без сообщений (ответ `PATCH`). */
+export interface ConversationMeta {
+  id: string;
+  title: string;
+  settings: ApiChatSettings;
+  revision: number;
+  message_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Conversation extends ConversationMeta {
+  messages: ApiMessage[];
+}
+
+/** Элемент списка диалогов; `snippet` — только в результатах поиска (`null` — совпало название). */
+export interface ConversationItem {
+  id: string;
+  title: string;
+  model: string;
+  message_count: number;
+  created_at: string;
+  updated_at: string;
+  snippet?: string;
+}
+
+export interface ConversationPage {
+  data: ConversationItem[];
+  next: string | null;
+}
+
+/** Ответ `PUT /api/conversations/{id}/messages`. */
+export interface TailResult {
+  revision: number;
+  updated_at: string;
+  message_count: number;
+}

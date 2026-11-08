@@ -1,7 +1,6 @@
 /** Клиент истории распознаваний `/api/transcriptions…` (собственный API шлюза). */
 
-import { authHeaders, notifyUnauthorized } from "./apiKey";
-import { networkError, parseErrorResponse } from "./errors";
+import { request } from "./http";
 import { isRecord } from "./json";
 import { parseTranscription } from "./transcribe";
 import type { JobStatus, Transcription, TranscriptionJob, TranscriptionPage } from "./types";
@@ -102,28 +101,6 @@ function jobFromText(text: string): TranscriptionJob {
   const job = parseJob(JSON.parse(text));
   if (job === null) throw new Error("Некорректный ответ сервера истории");
   return job;
-}
-
-/** fetch с ключом; ошибки — `ApiError` (401 — запрос ключа), сеть — понятный текст. */
-async function request(url: string, init: RequestInit = {}): Promise<Response> {
-  const headers = new Headers(init.headers);
-  for (const [name, value] of Object.entries(authHeaders())) headers.set(name, value);
-  let response: Response;
-  try {
-    response = await fetch(url, { ...init, headers });
-  } catch (error) {
-    if (isRecord(error) && error["name"] === "AbortError") throw error;
-    throw networkError();
-  }
-  if (!response.ok) {
-    if (response.status === 401) notifyUnauthorized();
-    throw parseErrorResponse(
-      response.status,
-      await response.text(),
-      response.headers.get("Retry-After"),
-    );
-  }
-  return response;
 }
 
 async function requestJob(url: string, init?: RequestInit): Promise<TranscriptionJob> {
