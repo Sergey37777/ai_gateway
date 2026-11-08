@@ -72,7 +72,7 @@ def normalize_request(request: ChatCompletionRequest, spec: OllamaSpec) -> JsonO
 
     payload: JsonObject = request.model_dump(exclude_unset=True)
     payload["model"] = spec.model
-    # память Ollama управляется только её OLLAMA_KEEP_ALIVE: иначе клиент мог бы закрепить
+    # память Ollama управляется только OLLAMA_KEEP_ALIVE контейнера: иначе клиент мог бы закрепить
     # LLM в общей VRAM (keep_alive: -1) и вытеснить Whisper
     payload.pop("keep_alive", None)
     messages = payload["messages"]
