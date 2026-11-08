@@ -70,6 +70,10 @@ async def test_create_returns_201_and_get(make_client):
         ({"messages": [{**user(), "extra": 1}]}, "extra"),
         ({"messages": [{"role": "system", "text": "x"}]}, "role"),
         ({"messages": [user("плохой\x00текст")]}, "text"),
+        (
+            {"messages": [user(images=[{"name": "a", "data_url": "data:image/png;base64,\x00"}])]},
+            "data_url",
+        ),
     ],
 )
 async def test_create_validation(

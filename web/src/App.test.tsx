@@ -168,3 +168,36 @@ test("#chat/<id> открывает вкладку «Чат» с сохранё�
   expect(screen.getByText("Вопрос из истории")).toBeInTheDocument();
   expect(screen.getByRole("tab", { name: "Чат" })).toHaveAttribute("aria-selected", "true");
 });
+
+test("переход на другую вкладку и обратно не закрывает открытый диалог", async () => {
+  window.location.hash = "#chat/c1";
+  stubRoutes({
+    "/ui/config": CONFIG,
+    "/api/conversations": { data: [], next: null },
+    "/api/transcriptions": { data: [], next: null },
+    "/api/conversations/c1": {
+      id: "c1",
+      title: "Сохранённый диалог",
+      settings: {
+        model: "qwen3-0.6b",
+        system_prompt: "",
+        temperature: null,
+        max_tokens: null,
+        reasoning_effort: null,
+      },
+      revision: 1,
+      message_count: 1,
+      created_at: "2026-11-08T10:00:00Z",
+      updated_at: "2026-11-08T10:00:00Z",
+      messages: [{ role: "user", text: "Вопрос из истории", images: [] }],
+    },
+  });
+  const user = userEvent.setup();
+  render(<App />);
+  expect(await screen.findByRole("heading", { name: "Сохранённый диалог" })).toBeInTheDocument();
+  await user.click(screen.getByRole("tab", { name: "История" }));
+  await user.click(screen.getByRole("tab", { name: "Чат" }));
+  expect(window.location.hash).toBe("#chat/c1");
+  expect(screen.getByRole("heading", { name: "Сохранённый диалог" })).toBeInTheDocument();
+  expect(screen.getByText("Вопрос из истории")).toBeInTheDocument();
+});

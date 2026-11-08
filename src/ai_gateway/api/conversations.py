@@ -71,7 +71,7 @@ class SettingsIn(_Strict):
 
 class ImageIn(_Strict):
     name: Text = ""
-    data_url: Annotated[str, AfterValidator(_image_url)]
+    data_url: Annotated[str, AfterValidator(_no_nul), AfterValidator(_image_url)]
 
 
 class UsageIn(_Strict):

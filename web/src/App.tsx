@@ -8,7 +8,7 @@ import { ErrorBanner } from "./components/ErrorBanner";
 import { ChatScreen } from "./chat/ChatScreen";
 import { HistoryScreen } from "./history/HistoryScreen";
 import { RecordScreen } from "./history/RecordScreen";
-import { parseRoute, recordHash, type Tab } from "./route";
+import { conversationHash, parseRoute, recordHash, type Tab } from "./route";
 import { TranscribeScreen } from "./transcribe/TranscribeScreen";
 
 const TABS: { id: Tab; label: string }[] = [
@@ -31,6 +31,9 @@ export function App() {
   // null — диалог скрыт; строка — показан с этим сообщением ("" — без сообщения)
   const [keyPrompt, setKeyPrompt] = useState<string | null>(null);
   const [dirty, setDirty] = useState({ transcribe: false, chat: false });
+  // диалог чата живёт, пока открыты другие вкладки: их адрес (#history…) его не закрывает
+  const [chatId, setChatId] = useState(route.conversationId);
+  if (tab === "chat" && route.conversationId !== chatId) setChatId(route.conversationId);
 
   const load = useCallback(() => {
     fetchConfig().then(
@@ -87,8 +90,9 @@ export function App() {
   }, []);
 
   const selectTab = (id: Tab) => {
-    setRoute({ tab: id, recordId: null, conversationId: null });
-    window.location.hash = id;
+    const conversationId = id === "chat" ? chatId : null;
+    setRoute({ tab: id, recordId: null, conversationId });
+    window.location.hash = conversationId === null ? id : conversationHash(conversationId);
   };
 
   const onCreated = useCallback((job: TranscriptionJob, file: File) => {
@@ -193,7 +197,7 @@ export function App() {
               <ChatScreen
                 config={configState.config}
                 onDirtyChange={onChatDirty}
-                conversationId={route.conversationId}
+                conversationId={chatId}
                 visible={tab === "chat"}
               />
             </section>
