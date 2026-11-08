@@ -1,4 +1,4 @@
-/** Состояние чата: сообщения, текущий стрим, правка и перегенерация. Истории между сессиями нет. */
+/** Состояние чата: сообщения, текущий стрим, правка и перегенерация. Сохранение — `persist.ts`. */
 
 export interface ImageAttachment {
   name: string;
@@ -25,6 +25,8 @@ export interface AssistantMessage {
   status: "streaming" | "done" | "stopped" | "error";
   usage: Usage | null;
   error: string | null;
+  /** Какая модель ответила; `null` — пока ответ стримится. */
+  model: string | null;
 }
 
 export type ChatMessage = UserMessage | AssistantMessage;
@@ -43,12 +45,14 @@ export type ChatAction =
   | { type: "started"; id: number }
   | { type: "delta"; id: number; content?: string; reasoning?: string }
   | { type: "usage"; id: number; usage: Usage }
-  | { type: "finish"; id: number }
-  | { type: "fail"; id: number; message: string }
-  | { type: "stop"; id: number }
+  | { type: "finish"; id: number; model?: string }
+  | { type: "fail"; id: number; message: string; model?: string }
+  | { type: "stop"; id: number; model?: string }
   | { type: "edit"; id: number; text: string }
   | { type: "regenerate" }
-  | { type: "clear" };
+  | { type: "clear" }
+  /** Открыт сохранённый диалог: сообщения заменяются (id выдаются заново). */
+  | { type: "load"; messages: ChatMessage[] };
 
 export const initialChatState: ChatState = {
   messages: [],
@@ -67,6 +71,7 @@ function withNewAnswer(state: ChatState, messages: ChatMessage[]): ChatState {
     status: "streaming",
     usage: null,
     error: null,
+    model: null,
   };
   return { messages: [...messages, answer], nextId: id + 1, streamingId: id, pending: id };
 }
@@ -114,16 +119,26 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
     case "usage":
       return updateAnswer(state, action.id, (m) => ({ ...m, usage: action.usage }), false);
     case "finish":
-      return updateAnswer(state, action.id, (m) => ({ ...m, status: "done" }), true);
+      return updateAnswer(
+        state,
+        action.id,
+        (m) => ({ ...m, status: "done", model: action.model ?? m.model }),
+        true,
+      );
     case "fail":
       return updateAnswer(
         state,
         action.id,
-        (m) => ({ ...m, status: "error", error: action.message }),
+        (m) => ({ ...m, status: "error", error: action.message, model: action.model ?? m.model }),
         true,
       );
     case "stop":
-      return updateAnswer(state, action.id, (m) => ({ ...m, status: "stopped" }), true);
+      return updateAnswer(
+        state,
+        action.id,
+        (m) => ({ ...m, status: "stopped", model: action.model ?? m.model }),
+        true,
+      );
     case "edit": {
       if (state.streamingId !== null) return state;
       const index = state.messages.findIndex((m) => m.id === action.id && m.role === "user");
@@ -141,6 +156,16 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
     case "clear":
       // nextId сохраняется: id не повторяются, запоздавшие события старого диалога не совпадут
       return { ...initialChatState, nextId: state.nextId };
+    case "load": {
+      // новые id: запоздавшие события прежнего диалога не совпадут ни с одним сообщением
+      const messages = action.messages.map((m, i) => ({ ...m, id: state.nextId + i }));
+      return {
+        messages,
+        nextId: state.nextId + messages.length,
+        streamingId: null,
+        pending: null,
+      };
+    }
   }
 }
 

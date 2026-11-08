@@ -124,3 +124,30 @@ test("id не повторяются после clear", () => {
   const next = chatReducer(s, { type: "send", text: "x", images: [] });
   expect(next.messages[0]?.id).toBeGreaterThanOrEqual(4);
 });
+
+test("load заменяет сообщения и сбрасывает стрим, id продолжаются", () => {
+  const streaming = run({ type: "send", text: "раз", images: [] });
+  const loaded = chatReducer(streaming, {
+    type: "load",
+    messages: [{ id: 0, role: "user", text: "сохранённый", images: [] }],
+  });
+  expect(loaded.messages).toHaveLength(1);
+  expect(loaded.messages[0]).toMatchObject({ text: "сохранённый" });
+  expect(loaded.messages[0]?.id).toBeGreaterThanOrEqual(streaming.nextId);
+  expect(loaded.streamingId).toBeNull();
+  expect(loaded.pending).toBeNull();
+  expect(loaded.nextId).toBeGreaterThan(loaded.messages[0]?.id ?? Infinity);
+});
+
+test("finish / stop / fail записывают модель ответа", () => {
+  let s = run({ type: "send", text: "раз", images: [] });
+  expect(last(s).model).toBeNull();
+  s = chatReducer(s, { type: "finish", id: last(s).id, model: "qwen3-0.6b" });
+  expect(last(s).model).toBe("qwen3-0.6b");
+  s = chatReducer(s, { type: "regenerate" });
+  s = chatReducer(s, { type: "stop", id: last(s).id, model: "m2" });
+  expect(last(s)).toMatchObject({ status: "stopped", model: "m2" });
+  s = chatReducer(s, { type: "regenerate" });
+  s = chatReducer(s, { type: "fail", id: last(s).id, message: "x", model: "m3" });
+  expect(last(s)).toMatchObject({ status: "error", model: "m3" });
+});

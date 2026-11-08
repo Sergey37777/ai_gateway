@@ -87,7 +87,7 @@ export function App() {
   }, []);
 
   const selectTab = (id: Tab) => {
-    setRoute({ tab: id, recordId: null });
+    setRoute({ tab: id, recordId: null, conversationId: null });
     window.location.hash = id;
   };
 

@@ -20,6 +20,7 @@ const HISTORY: ChatMessage[] = [
     status: "done",
     usage: null,
     error: null,
+    model: null,
   },
   {
     id: 2,
@@ -74,6 +75,7 @@ test("ответы с ошибкой и пустые остановленные 
       status: "error",
       usage: null,
       error: "x",
+      model: null,
     },
     { id: 2, role: "user", text: "2", images: [] },
     {
@@ -84,6 +86,7 @@ test("ответы с ошибкой и пустые остановленные 
       status: "stopped",
       usage: null,
       error: null,
+      model: null,
     },
     { id: 4, role: "user", text: "3", images: [] },
     {
@@ -94,6 +97,7 @@ test("ответы с ошибкой и пустые остановленные 
       status: "stopped",
       usage: null,
       error: null,
+      model: null,
     },
   ];
   expect(buildRequest(history, SETTINGS).messages).toEqual([
