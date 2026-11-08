@@ -205,6 +205,19 @@ setx OLLAMA_KV_CACHE_TYPE q8_0      # KV-кэш вдвое меньше f16
 > сама; если после обновления чат сломался — перезапишите фикстуры
 > (`uv run python scripts/record_ollama_fixtures.py`) и прогоните тесты.
 
+**Переход со старой схемы (Ollama в контейнере).** `docker compose up -d --build --remove-orphans`
+удаляет контейнер `ollama`, но не его образ и том с моделями (на `qwen3:14b` — около 9 ГБ).
+Нативная Ollama хранит модели отдельно (`%USERPROFILE%\.ollama`), поэтому их можно удалить:
+
+```powershell
+docker image rm ollama/ollama:0.40.8
+docker volume ls                              # том с моделями: <проект>_ollama-models
+docker volume rm ai_gateway_ollama-models     # имя — как в списке выше
+```
+
+Если образ занят, остался остановленный контейнер: `docker ps -a --filter ancestor=ollama/ollama:0.40.8`,
+затем `docker rm <ID>`.
+
 Веса Whisper кэшируются в volume `hf-cache`, реестр `models.yaml` монтируется только для чтения —
 после его правки достаточно `docker compose restart gateway`.
 uvicorn работает строго с одним воркером: каждый воркер загрузил бы свою копию модели в VRAM.
