@@ -76,8 +76,9 @@ npm run test:e2e             # Playwright: сборка + реальный шл�
   Часы инжектируются (`clock`) — тесты используют `FakeClock`, а не `sleep`.
 - Блокирующие вызовы (`load`, `transcribe`) идут через `asyncio.to_thread` — event loop
   не блокировать.
-- **Ollama (этап 2)** — отдельный контейнер; её памятью управляет её `keep_alive`, шлюз
-  не пытается учитывать VRAM между процессами.
+- **Ollama (этап 2)** — отдельный процесс: в продакшне нативно на Windows-хосте (шлюз из контейнера
+  ходит на `host.docker.internal:11434`), на Mac — контейнер `ollama-dev`; её памятью управляет её
+  `keep_alive`, шлюз не пытается учитывать VRAM между процессами.
 - **Этап 4 — задачи и история:** `jobs.py` (`TranscriptionService.execute()` — единый исполнитель:
   фоновые задачи берёт `Worker` по одной FIFO, синхронный `/v1/audio/transcriptions` идёт сразу через
   `run_sync` под `asyncio.shield`), `store.py` (протокол `TranscriptionStore` + SQLAlchemy 2.0 async /

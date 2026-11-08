@@ -143,7 +143,11 @@ npm run test:e2e                 # сборка + реальный шлюз на
    ```powershell
    copy .env.example .env
    docker compose up -d --build
-   docker compose exec ollama ollama pull qwen3:14b
+   ```
+4. Установить [Ollama для Windows](https://ollama.com/download) нативно, задать её настройки
+   (см. ниже «Ollama на Windows-хосте») и скачать модель:
+   ```powershell
+   ollama pull qwen3:14b
    ```
    Имя при `ollama pull` должно совпадать с полем `model` записи в `models.yaml` (`qwen3:14b` для
    `qwen3-14b`); при другой модели поправьте `models.yaml` и скачайте её.
@@ -158,10 +162,33 @@ npm run test:e2e                 # сборка + реальный шлюз на
 1,6 ГБ, `large-v3` — около 3 ГБ) и загружаются в VRAM. Повторные запросы, пока модель не
 выгружена по TTL, идут без этой задержки.
 
-Контейнер `ollama` (закреплённая версия образа, GPU делится со шлюзом) порты наружу не публикует:
-шлюз — единственная точка входа. Модели Ollama лежат в volume `ollama-models`; отладка —
-`docker compose exec ollama ollama ps|pull|list`. Шлюз стартует и без Ollama (`/health` покажет
+### Ollama на Windows-хосте
+
+Ollama установлена нативно (не в Docker); шлюз из контейнера ходит к ней на
+`http://host.docker.internal:11434` (Docker Desktop резолвит это имя сам). GPU она делит со шлюзом,
+отладка — прямо в PowerShell: `ollama ps|pull|list`. Шлюз стартует и без Ollama (`/health` покажет
 `"ollama": "unavailable"`, распознавание продолжит работать).
+
+Настройки — переменные среды пользователя Windows (Параметры → Система → О системе →
+Дополнительные параметры системы → Переменные среды), после изменения перезапустить Ollama из трея:
+
+```powershell
+setx OLLAMA_KEEP_ALIVE 10m          # простой до выгрузки модели из VRAM
+setx OLLAMA_NUM_PARALLEL 1          # каждый слот умножает KV-кэш
+setx OLLAMA_CONTEXT_LENGTH 16384
+setx OLLAMA_FLASH_ATTENTION 1       # нужен для квантования KV-кэша
+setx OLLAMA_KV_CACHE_TYPE q8_0      # KV-кэш вдвое меньше f16
+```
+
+По умолчанию Ollama слушает только `127.0.0.1:11434`, и через `host.docker.internal` этого хватает.
+Если `/health` всё равно показывает `"ollama": "unavailable"`, задайте `OLLAMA_HOST=0.0.0.0:11434`,
+но тогда Ollama без авторизации доступна всей локальной сети в обход шлюза — закройте порт `11434`
+для входящих подключений в брандмауэре Windows.
+
+> **Версия.** Шлюз проверен на Ollama 0.40.8 (фикстуры тестов записаны на ней, нормализация
+> `tool_calls` не реализована, т.к. эта версия отдаёт их корректно). Нативная Ollama обновляется
+> сама; если после обновления чат сломался — перезапишите фикстуры
+> (`uv run python scripts/record_ollama_fixtures.py`) и прогоните тесты.
 
 Веса Whisper кэшируются в volume `hf-cache`, реестр `models.yaml` монтируется только для чтения —
 после его правки достаточно `docker compose restart gateway`.
@@ -196,7 +223,7 @@ curl http://<host>:8000/v1/audio/transcriptions \
 
 Тело запроса — по схеме OpenAI Chat Completions; поле `model` обязательно (имя или алиас из
 `models.yaml`, модель должна быть с `backend: ollama`). Неизвестные поля передаются в Ollama, кроме `keep_alive`: он отбрасывается, время простоя
-модели задаёт только `OLLAMA_KEEP_ALIVE` контейнера.
+модели задаёт только `OLLAMA_KEEP_ALIVE` самой Ollama.
 
 Без стрима:
 
@@ -308,11 +335,10 @@ models:
 
 См. `.env.example`: `AIGW_DEVICE`, `AIGW_COMPUTE_TYPE`, `AIGW_API_KEY`, `AIGW_MAX_UPLOAD_MB`,
 `AIGW_MODELS_FILE`, `AIGW_DEFAULT_TTL`, `AIGW_SWEEP_INTERVAL`, `AIGW_LOG_LEVEL`,
-`AIGW_OLLAMA_URL` (по умолчанию `http://localhost:11434`; в compose — `http://ollama:11434`),
+`AIGW_OLLAMA_URL` (по умолчанию `http://localhost:11434`; в compose — `http://host.docker.internal:11434`),
 `AIGW_OLLAMA_READ_TIMEOUT` (макс. пауза между байтами ответа Ollama, по умолчанию 300 с).
-Настройки контейнера `ollama` в `.env` (подставляются compose): `OLLAMA_KEEP_ALIVE` (простой до
-выгрузки модели, `10m`), `OLLAMA_NUM_PARALLEL` (`1`), `OLLAMA_CONTEXT_LENGTH` (`16384`),
-`OLLAMA_FLASH_ATTENTION` (`1`), `OLLAMA_KV_CACHE_TYPE` (`q8_0`).
+Настройки Ollama (`OLLAMA_*`) в `.env` не задаются — это переменные среды Windows, см.
+«Ollama на Windows-хосте».
 Оценка памяти для `qwen3:14b` (q4) при контексте 16k: веса ~9 ГБ + KV-кэш ~1,6 ГБ + Whisper ~2 ГБ ≈ 13 ГБ из 16 ГБ.
 `AIGW_WEB_DIR` — каталог собранного Web UI (по умолчанию `web/dist`, в образе `/app/web`);
 нет каталога — UI не раздаётся, API работает как обычно.
@@ -336,13 +362,12 @@ models:
 
 ## Чек-лист приёмки чата на GPU
 
-- [ ] `git pull`, в `.env` дописаны переменные `OLLAMA_*` из `.env.example`,
-      `docker compose up -d --build`; `docker compose exec ollama nvidia-smi` видит GPU.
-- [ ] `docker compose exec ollama ollama pull qwen3:14b`; `curl.exe http://localhost:8000/health`
-      возвращает `"ollama": "ok"`.
+- [ ] `git pull`, `docker compose up -d --build`; нативная Ollama запущена, переменные `OLLAMA_*`
+      заданы в среде Windows (см. «Ollama на Windows-хосте»).
+- [ ] `ollama pull qwen3:14b`; `curl.exe http://localhost:8000/health` возвращает `"ollama": "ok"`.
 - [ ] OpenAI SDK: ответ без стрима, со стримом, полный цикл tool call; в ответе есть `reasoning_content`.
 - [ ] Распознавание и чат по очереди идут без 503; в `nvidia-smi` обе модели в памяти, суммарно < 16 ГБ.
-- [ ] После простоя `OLLAMA_KEEP_ALIVE` `docker compose exec ollama ollama ps` пуст, память в
+- [ ] После простоя `OLLAMA_KEEP_ALIVE` `ollama ps` пуст, память в
       `nvidia-smi` упала.
 
 ## Чек-лист приёмки Web UI на GPU
