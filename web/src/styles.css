@@ -1039,6 +1039,162 @@ button.segment-time:hover .timestamp {
   color: var(--signal);
 }
 
+/* чат с сохранёнными диалогами: панель слева, диалог справа; на узком экране панель — поверх */
+
+.chat-layout {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
+}
+
+.chat-sidebar {
+  position: sticky;
+  top: 16px;
+}
+
+.chat-sidebar-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.chat-new-button {
+  width: 100%;
+}
+
+.chat-search {
+  width: 100%;
+}
+
+.chat-list {
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+}
+
+.chat-list-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 12px;
+  border-radius: var(--r-s);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.chat-list-item:hover {
+  background: var(--sheet-2);
+}
+
+.chat-list-item[aria-current="page"] {
+  background: var(--signal-soft);
+}
+
+.chat-list-item:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: -2px;
+}
+
+.chat-list-title {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.chat-list-meta,
+.chat-list-snippet {
+  font-size: 13px;
+  color: var(--graphite);
+}
+
+.chat-list-empty {
+  margin: 4px 12px;
+}
+
+.chat-more {
+  align-self: flex-start;
+}
+
+.chat-sidebar-toggle {
+  display: none;
+}
+
+.chat-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+
+.chat-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  overflow-wrap: anywhere;
+}
+
+.chat-header .title-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.chat-header-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.chat-notice {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: var(--r-m);
+  background: var(--signal-soft);
+  font-size: 14px;
+}
+
+.chat-save-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 14px;
+  border-radius: var(--r-m);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 14px;
+}
+
+@media (width < 800px) {
+  .chat-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .chat-sidebar {
+    display: none;
+  }
+
+  .chat-sidebar.chat-sidebar-open {
+    display: block;
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 20;
+    width: min(320px, 88vw);
+    padding: 20px 16px;
+    overflow-y: auto;
+    background: var(--sheet);
+    box-shadow: var(--shadow-float);
+  }
+
+  .chat-sidebar-toggle {
+    display: inline-flex;
+    align-self: flex-start;
+  }
+}
+
 /* чат: колонка для чтения, ответ модели — прямо на фоне, реплика пользователя — плашкой */
 
 .chat {
