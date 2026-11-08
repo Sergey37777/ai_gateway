@@ -30,7 +30,7 @@ router = APIRouter()
 MAX_TITLE = 200
 
 
-def _iso(value: datetime | None) -> str | None:
+def iso(value: datetime | None) -> str | None:
     if value is None:
         return None
     return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
@@ -63,9 +63,9 @@ def transcription_json(
         "has_audio": record.audio_path is not None,
         # «Повторить» возможно, только пока хранится загрузка
         "retryable": record.status in ("failed", "cancelled") and record.upload_path is not None,
-        "created_at": _iso(record.created_at),
-        "started_at": _iso(record.started_at),
-        "finished_at": _iso(record.finished_at),
+        "created_at": iso(record.created_at),
+        "started_at": iso(record.started_at),
+        "finished_at": iso(record.finished_at),
     }
     if snippet is not None:
         body["snippet"] = snippet

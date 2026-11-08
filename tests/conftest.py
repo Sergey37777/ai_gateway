@@ -22,6 +22,7 @@ from ai_gateway.registry import ModelRegistry
 from tests.fakes import (
     FakeOllama,
     FakeTranscriptionBackend,
+    InMemoryConversationStore,
     InMemoryTranscriptionStore,
     fake_encode,
 )
@@ -59,6 +60,7 @@ class GatewayClient(httpx.AsyncClient):
     backend: FakeTranscriptionBackend
     ollama: FakeOllama
     store: InMemoryTranscriptionStore
+    conversations: InMemoryConversationStore
     app: FastAPI
 
 
@@ -108,8 +110,14 @@ async def make_client(tmp_path: Path) -> AsyncIterator[MakeClient]:
         factory: Callable[..., FakeTranscriptionBackend] = lambda _spec: fake  # noqa: E731
         manager = ModelManager(registry.whisper_specs(), factory)
         store = InMemoryTranscriptionStore()
+        conversations = InMemoryConversationStore()
         app = create_app(
-            settings, registry=registry, manager=manager, chat_backend=chat_backend, store=store
+            settings,
+            registry=registry,
+            manager=manager,
+            chat_backend=chat_backend,
+            store=store,
+            conversations=conversations,
         )
         await lifespans.enter_async_context(app.router.lifespan_context(app))
         # тестовые байты — не аудио: Opus кодирует фейк (настоящий — tests/test_opus.py)
@@ -118,6 +126,7 @@ async def make_client(tmp_path: Path) -> AsyncIterator[MakeClient]:
         client.backend = fake
         client.ollama = fake_ollama
         client.store = store
+        client.conversations = conversations
         client.app = app
         clients.append(client)
         return client

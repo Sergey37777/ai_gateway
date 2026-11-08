@@ -105,6 +105,10 @@ async def _validation_error_handler(_request: Request, exc: Exception) -> Respon
     first = errors[0] if errors else {}
     loc = first.get("loc") or ()
     param = str(loc[-1]) if loc else None
+    # неизвестное значение дискриминатора (роль сообщения): виновато поле, а не индекс в списке
+    if first.get("type") in ("union_tag_invalid", "union_tag_not_found"):
+        ctx = first.get("ctx") or {}
+        param = str(ctx.get("discriminator", param)).strip("'")
     message = str(first.get("msg", "Некорректный запрос"))
     return error_response(GatewayError(400, "invalid_request_error", message, param=param))
 

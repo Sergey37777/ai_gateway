@@ -12,6 +12,7 @@ from loguru import logger
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from ai_gateway.api import audio, chat, health, models, transcriptions, ui
+from ai_gateway.api import conversations as conversations_api
 from ai_gateway.api.deps import api_key_valid, invalid_api_key
 from ai_gateway.backends import build_backend
 from ai_gateway.backends.base import ChatBackend
@@ -22,6 +23,7 @@ from ai_gateway.config import (
     resolve_compute_type,
     resolve_device,
 )
+from ai_gateway.conversations import ConversationStore, SqlConversationStore
 from ai_gateway.db.engine import create_engine, make_sessions, migrate
 from ai_gateway.errors import error_response, install_error_handlers, internal_error
 from ai_gateway.files import DataDir, file_too_large
@@ -34,7 +36,8 @@ from ai_gateway.web import mount_web
 TRANSCRIPTIONS_PATH = "/v1/audio/transcriptions"
 CHAT_PATH = "/v1/chat/completions"
 JOBS_PATH = "/api/transcriptions"
-GUARDED_PATHS = frozenset({TRANSCRIPTIONS_PATH, CHAT_PATH, JOBS_PATH})
+CONVERSATIONS_PATH = "/api/conversations"
+GUARDED_PATHS = frozenset({TRANSCRIPTIONS_PATH, CHAT_PATH, JOBS_PATH, CONVERSATIONS_PATH})
 # ключ API нужен OpenAI-совместимому API и собственному API шлюза
 PROTECTED_PREFIXES = ("/v1/", "/api/")
 MIB = 1024 * 1024
@@ -122,6 +125,15 @@ class ApiKeyMiddleware:
         await self.app(scope, receive, send)
 
 
+def _guarded(method: str, path: str) -> bool:
+    """Запросы с большим телом: загрузки, чат, создание диалога и запись его сообщений."""
+    if method == "POST":
+        return path in GUARDED_PATHS
+    return (
+        method == "PUT" and path.startswith(CONVERSATIONS_PATH + "/") and path.endswith("/messages")
+    )
+
+
 class UploadSizeGuardMiddleware:
     """Ограничивает размер тела загрузки, не дочитывая лишнее.
 
@@ -137,18 +149,17 @@ class UploadSizeGuardMiddleware:
         self.max_body = max_upload_mb * MIB + MIB
 
     async def _reject(self, scope: Scope, receive: Receive, send: Send) -> None:
+        # JSON-тела (чат, диалоги) — «запрос слишком большой», загрузки — «файл слишком большой»
         error = (
             chat.request_too_large(self.max_upload_mb)
-            if scope["path"] == CHAT_PATH
+            if scope["path"] == CHAT_PATH or scope["path"].startswith(CONVERSATIONS_PATH)
             else file_too_large(self.max_upload_mb)
         )
         response = error_response(error)
         await response(scope, receive, send)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if not (
-            scope["type"] == "http" and scope["method"] == "POST" and scope["path"] in GUARDED_PATHS
-        ):
+        if not (scope["type"] == "http" and _guarded(scope["method"], scope["path"])):
             await self.app(scope, receive, send)
             return
 
@@ -193,8 +204,9 @@ def create_app(
     manager: ModelManager | None = None,
     chat_backend: ChatBackend | None = None,
     store: TranscriptionStore | None = None,
+    conversations: ConversationStore | None = None,
 ) -> FastAPI:
-    """Фабрика приложения; реестр, менеджер, чат-бэкенд и хранилище можно внедрить (тесты)."""
+    """Фабрика приложения; реестр, менеджер, чат-бэкенд и хранилища можно внедрить (тесты)."""
     settings = settings if settings is not None else Settings()
 
     @contextlib.asynccontextmanager
@@ -222,13 +234,17 @@ def create_app(
             )
             app.state.chat_backend = own_chat
 
-        # история и очередь: без внедрённого хранилища — PostgreSQL с миграциями при старте
+        # история, очередь и диалоги: невнедрённые хранилища — PostgreSQL с миграциями при старте
         engine = None
         jobs_store: TranscriptionStore | None = app.state.store
-        if jobs_store is None:
+        chats: ConversationStore | None = app.state.conversations
+        if jobs_store is None or chats is None:
             engine = create_engine(settings.database_url)
             await asyncio.to_thread(migrate, settings.database_url)
-            jobs_store = SqlTranscriptionStore(make_sessions(engine))
+            sessions = make_sessions(engine)
+            jobs_store = jobs_store or SqlTranscriptionStore(sessions)
+            chats = chats or SqlConversationStore(sessions)
+        app.state.conversations = chats
         files = DataDir(settings.data_dir)
         files.ensure()
         service = TranscriptionService(jobs_store, mgr, files, max_upload_mb=settings.max_upload_mb)
@@ -258,6 +274,7 @@ def create_app(
     app.state.manager = manager
     app.state.chat_backend = chat_backend
     app.state.store = store
+    app.state.conversations = conversations
     app.state.service = None
     # без lifespan (тесты) устройство берётся из настроек; lifespan уточняет его
     app.state.device = "cpu" if settings.device == "auto" else settings.device
@@ -267,6 +284,7 @@ def create_app(
     app.include_router(chat.router, prefix="/v1")
     app.include_router(models.router, prefix="/v1")
     app.include_router(transcriptions.router, prefix="/api")
+    app.include_router(conversations_api.router, prefix="/api")
     app.include_router(health.router)
     app.include_router(ui.router)
     # статика UI — последней: `/v1/*`, `/health`, `/ui/config` матчатся раньше
