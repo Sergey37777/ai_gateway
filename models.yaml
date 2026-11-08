@@ -14,6 +14,6 @@ models:
     model: large-v3-turbo
     ttl: 600
   # чат через Ollama: tools + reasoning, ~9 ГБ в q4; можно заменить на другую модель
-  qwen3-14b:
+  gemma4-12b:
     backend: ollama
-    model: "qwen3:14b"
+    model: "gemma4:12b"
