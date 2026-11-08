@@ -6,14 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `ai_gateway` — локальный роутер моделей с **OpenAI-совместимым API**. Этапы 1 (шлюз + Whisper),
 2 (Ollama + `/v1/chat/completions`) и 3 (Web UI на React в `web/`) готовы; пословные таймкоды в UI
-(3.1) и **этап 4** — фоновые задачи и история распознаваний в PostgreSQL. Спецификации —
-`docs/superpowers/specs/2026-11-04-ai-gateway-stage{1,2,3,4}-design.md` и
-`…-word-timestamps-design.md`; они источник истины по API, форматам ответов, кодам ошибок и тестам.
+(3.1), **этап 4** — фоновые задачи и история распознаваний в PostgreSQL — и **этап 5** — диалоги
+чата в истории. Спецификации — `docs/superpowers/specs/2026-11-04-ai-gateway-stage{1,2,3,4}-design.md`,
+`…-word-timestamps-design.md` и `2026-11-08-ai-gateway-stage5-design.md`; они источник истины по API, форматам ответов, кодам ошибок и тестам.
 Если код расходится со спецификацией — сначала уточнить у пользователя, а не молча менять одно
 под другое.
 
-Roadmap (решения по будущим этапам — `docs/roadmap.md`): этап 5 — диалоги чата в истории;
-дальше — разметка спикеров. Не реализовывать функциональность следующих этапов без запроса.
+Roadmap (решения по будущим этапам — `docs/roadmap.md`): дальше — прототип и разметка спикеров. Не реализовывать функциональность следующих этапов без запроса.
 
 Документация, комментарии и сообщения коммитов — на русском.
 
@@ -87,6 +86,13 @@ npm run test:e2e             # Playwright: сборка + реальный шл�
   `backends/opus.py` (Opus/WebM для плеера). **Прогресс и флаг отмены — в памяти процесса**
   (`RunState`), не в БД. Бэкенд распознавания получает `TranscriptionHooks` (ход и остановка между
   сегментами). Собственный API — `/api/transcriptions…`, не `/v1/`.
+- **Этап 5 — диалоги чата:** генерация по-прежнему идёт из браузера через `/v1/chat/completions`;
+  UI сохраняет диалог сам через `/api/conversations…`. `conversations.py` — протокол
+  `ConversationStore` + SQLAlchemy (в тестах — `InMemoryConversationStore`); главная операция —
+  `replace_tail` (замена сообщений с позиции `from` в одной транзакции, `SELECT … FOR UPDATE`,
+  проверка `revision` → 409). Общее для хранилищ (сессия → 503, курсор) — `db/session.py`.
+  В UI: `chat/persist.ts` (`planWrite` — что записать от снимка сохранённого),
+  `chat/useConversationSaver.ts` (очередь записей по одной), `ConversationList`/`ConversationHeader`.
 - **`errors.py`** — все ошибки отдаются в формате OpenAI `{"error": {message, type, param, code}}`
   через `GatewayError`; OOM/ошибка загрузки модели → 503 `model_unavailable` + `Retry-After`.
 - Конфигурация: env с префиксом `AIGW_` (`config.py`, pydantic-settings) + реестр моделей
