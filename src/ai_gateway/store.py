@@ -5,23 +5,19 @@ ORM-строки наружу не выходят — только frozen datacl
 """
 
 import asyncio
-import base64
-import binascii
 import uuid
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import AbstractAsyncContextManager
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from typing import Literal, Protocol, TypeGuard, get_args
 
 from sqlalchemy import cast, delete, func, literal, select, text, tuple_, update
 from sqlalchemy.dialects.postgresql import REGCONFIG
-from sqlalchemy.exc import InterfaceError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ai_gateway.backends.base import Segment, TranscriptionResult, Word
 from ai_gateway.db.models import TranscriptionResultRow, TranscriptionRow
-from ai_gateway.errors import GatewayError, database_unavailable
+from ai_gateway.db.session import SNIPPET_OPTIONS, decode_position, encode_position, session_scope
 
 Status = Literal["queued", "running", "done", "failed", "cancelled"]
 Source = Literal["ui", "api"]
@@ -29,7 +25,6 @@ STATUSES: tuple[Status, ...] = get_args(Status)
 ACTIVE: tuple[Status, ...] = ("queued", "running")
 DEFAULT_LIMIT = 30
 MAX_LIMIT = 100
-SNIPPET_OPTIONS = "MaxWords=18, MinWords=8, StartSel=«, StopSel=»"
 
 
 def is_status(value: str) -> TypeGuard[Status]:
@@ -90,23 +85,13 @@ class Cursor:
 
 
 def encode_cursor(cursor: Cursor) -> str:
-    raw = f"{cursor.created_at.isoformat()}|{cursor.id}".encode()
-    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+    return encode_position(cursor.created_at, cursor.id)
 
 
 def decode_cursor(value: str) -> Cursor:
     """Курсор из `?before=`; битый — 400 с `param="before"`."""
-    try:
-        raw = base64.urlsafe_b64decode(value + "=" * (-len(value) % 4)).decode()
-        stamp, _, tid = raw.partition("|")
-        created_at = datetime.fromisoformat(stamp)
-        if created_at.tzinfo is None:
-            raise ValueError("время без часового пояса")
-        return Cursor(created_at=created_at, id=uuid.UUID(tid))
-    except (ValueError, binascii.Error, UnicodeDecodeError) as exc:
-        raise GatewayError(
-            400, "invalid_request_error", "Некорректный курсор", param="before"
-        ) from exc
+    created_at, tid = decode_position(value)
+    return Cursor(created_at=created_at, id=tid)
 
 
 @dataclass(frozen=True, slots=True)
@@ -249,13 +234,8 @@ class SqlTranscriptionStore:
     def __init__(self, sessions: async_sessionmaker[AsyncSession]) -> None:
         self._sessions = sessions
 
-    @asynccontextmanager
-    async def _session(self) -> AsyncIterator[AsyncSession]:
-        try:
-            async with self._sessions() as session, session.begin():
-                yield session
-        except (OperationalError, InterfaceError) as exc:
-            raise database_unavailable() from exc
+    def _session(self) -> AbstractAsyncContextManager[AsyncSession]:
+        return session_scope(self._sessions)
 
     async def create(self, new: NewTranscription) -> TranscriptionRecord:
         async with self._session() as session:
