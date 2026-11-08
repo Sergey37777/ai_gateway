@@ -63,8 +63,31 @@ export function persistable(messages: ChatMessage[]): ApiMessage[] {
   return messages.map(toApiMessage).filter((m): m is ApiMessage => m !== null);
 }
 
+/** Поле за полем, без сериализации: data URL картинок — мегабайты, сравнение строк дешевле. */
 function same(a: ApiMessage, b: ApiMessage): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
+  if (a.role === "user" || b.role === "user") {
+    return (
+      a.role === "user" &&
+      b.role === "user" &&
+      a.text === b.text &&
+      a.images.length === b.images.length &&
+      a.images.every((image, i) => {
+        const other = b.images[i];
+        return (
+          other !== undefined && other.name === image.name && other.data_url === image.data_url
+        );
+      })
+    );
+  }
+  return (
+    a.text === b.text &&
+    a.reasoning === b.reasoning &&
+    a.status === b.status &&
+    a.error === b.error &&
+    a.model === b.model &&
+    a.usage?.prompt_tokens === b.usage?.prompt_tokens &&
+    a.usage?.completion_tokens === b.usage?.completion_tokens
+  );
 }
 
 function firstDifference(saved: ApiMessage[], next: ApiMessage[]): number {

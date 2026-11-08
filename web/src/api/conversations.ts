@@ -28,7 +28,7 @@ function stringOrNull(value: unknown): value is string | null {
   return value === null || typeof value === "string";
 }
 
-function parseSettings(value: unknown): ApiChatSettings | null {
+export function parseSettings(value: unknown): ApiChatSettings | null {
   if (!isRecord(value)) return null;
   const { model, system_prompt: prompt, temperature, max_tokens: maxTokens } = value;
   const effort = EFFORTS.find((e) => e === value["reasoning_effort"]) ?? null;

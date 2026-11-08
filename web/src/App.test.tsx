@@ -59,7 +59,8 @@ test("ошибка загрузки конфига — сообщение и п�
   ).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Повторить" }));
   expect(await screen.findByRole("tab", { name: "Чат" })).toBeInTheDocument();
-  expect(fetchMock).toHaveBeenCalledTimes(2);
+  // чат после загрузки конфига ещё и читает список диалогов — считаем только конфиг
+  expect(fetchMock.mock.calls.filter(([input]) => input === "/ui/config")).toHaveLength(2);
 });
 
 test("auth_required без ключа — диалог, ключ сохраняется", async () => {
@@ -138,4 +139,32 @@ test("#history/<id> открывает запись", async () => {
   expect(await screen.findByRole("heading", { name: "Лекция" })).toBeInTheDocument();
   expect(screen.getByRole("tab", { name: "История" })).toHaveAttribute("aria-selected", "true");
   expect(screen.getByText("В очереди: 1-я")).toBeInTheDocument();
+});
+
+test("#chat/<id> открывает вкладку «Чат» с сохранённым диалогом", async () => {
+  window.location.hash = "#chat/c1";
+  stubRoutes({
+    "/ui/config": CONFIG,
+    "/api/conversations": { data: [], next: null },
+    "/api/conversations/c1": {
+      id: "c1",
+      title: "Сохранённый диалог",
+      settings: {
+        model: "qwen3-0.6b",
+        system_prompt: "",
+        temperature: null,
+        max_tokens: null,
+        reasoning_effort: null,
+      },
+      revision: 1,
+      message_count: 1,
+      created_at: "2026-11-08T10:00:00Z",
+      updated_at: "2026-11-08T10:00:00Z",
+      messages: [{ role: "user", text: "Вопрос из истории", images: [] }],
+    },
+  });
+  render(<App />);
+  expect(await screen.findByRole("heading", { name: "Сохранённый диалог" })).toBeInTheDocument();
+  expect(screen.getByText("Вопрос из истории")).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Чат" })).toHaveAttribute("aria-selected", "true");
 });

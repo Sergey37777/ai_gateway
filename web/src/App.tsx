@@ -190,7 +190,12 @@ export function App() {
               aria-labelledby="tab-chat"
               hidden={tab !== "chat"}
             >
-              <ChatScreen config={configState.config} onDirtyChange={onChatDirty} />
+              <ChatScreen
+                config={configState.config}
+                onDirtyChange={onChatDirty}
+                conversationId={route.conversationId}
+                visible={tab === "chat"}
+              />
             </section>
           </>
         )}
