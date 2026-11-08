@@ -63,6 +63,17 @@ def transcription_not_found(tid: object) -> GatewayError:
     return GatewayError(404, "transcription_not_found", f"Распознавание '{tid}' не найдено")
 
 
+def conversation_not_found() -> GatewayError:
+    return GatewayError(404, "conversation_not_found", "Диалог не найден")
+
+
+def conversation_conflict() -> GatewayError:
+    """409: `revision` не совпал — диалог изменили в другой вкладке или на другом устройстве."""
+    return GatewayError(
+        409, "conversation_conflict", "Диалог изменён в другом месте — загрузите его заново"
+    )
+
+
 def invalid_state(message: str) -> GatewayError:
     """409: действие не подходит к текущему статусу распознавания."""
     return GatewayError(409, "invalid_state", message)

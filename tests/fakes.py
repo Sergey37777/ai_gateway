@@ -3,7 +3,7 @@
 import json
 import threading
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -19,7 +19,17 @@ from ai_gateway.backends.base import (
     TranscriptionOptions,
     TranscriptionResult,
 )
-from ai_gateway.errors import database_unavailable
+from ai_gateway.conversations import (
+    ChatSettings,
+    Conversation,
+    ConversationMeta,
+    Message,
+    from_out_of_range,
+)
+from ai_gateway.conversations import ListItem as ConversationListItem
+from ai_gateway.conversations import ListQuery as ConversationListQuery
+from ai_gateway.conversations import Page as ConversationPage
+from ai_gateway.errors import conversation_conflict, conversation_not_found, database_unavailable
 from ai_gateway.registry import WhisperSpec
 from ai_gateway.store import (
     Cursor,
@@ -444,3 +454,113 @@ def fake_encode(_src: Path, dst: Path) -> int:
     """Вместо encode_opus в API-тестах: пишет 4 байта «аудио»."""
     dst.write_bytes(b"opus")
     return 4
+
+
+class InMemoryConversationStore:
+    """`ConversationStore` в памяти: та же семантика `replace_tail`; поиск — подстрока."""
+
+    def __init__(self) -> None:
+        self.conversations: dict[uuid.UUID, Conversation] = {}
+        self.available = True
+        self._tick = 0
+
+    def _now(self) -> datetime:
+        # строго возрастающее время: порядок списка детерминирован
+        self._tick += 1
+        return datetime(2026, 11, 8, tzinfo=UTC) + timedelta(microseconds=self._tick)
+
+    def _check(self) -> None:
+        if not self.available:
+            raise database_unavailable()
+
+    async def create(
+        self, title: str, settings: ChatSettings, messages: Sequence[Message]
+    ) -> Conversation:
+        self._check()
+        now = self._now()
+        meta = ConversationMeta(
+            id=uuid.uuid4(),
+            title=title,
+            settings=settings,
+            revision=0,
+            message_count=len(messages),
+            created_at=now,
+            updated_at=now,
+        )
+        conversation = Conversation(meta=meta, messages=tuple(messages))
+        self.conversations[meta.id] = conversation
+        return conversation
+
+    async def get(self, cid: uuid.UUID) -> Conversation | None:
+        self._check()
+        return self.conversations.get(cid)
+
+    async def list(self, query: ConversationListQuery) -> ConversationPage:
+        self._check()
+        found = sorted(
+            self.conversations.values(),
+            key=lambda c: (c.meta.updated_at, c.meta.id),
+            reverse=True,
+        )
+        items: list[ConversationListItem] = []
+        for conversation in found:
+            meta = conversation.meta
+            if query.before is not None and (meta.updated_at, meta.id) >= query.before:
+                continue
+            snippet = None
+            if query.q:
+                needle = query.q.lower()
+                matched = [m.text for m in conversation.messages if needle in m.text.lower()]
+                if needle not in meta.title.lower() and not matched:
+                    continue
+                snippet = matched[0] if matched else None
+            items.append(ConversationListItem(meta=meta, snippet=snippet))
+        page = items[: query.limit]
+        last = page[-1].meta if len(items) > query.limit else None
+        return ConversationPage(
+            items=page, next=None if last is None else (last.updated_at, last.id)
+        )
+
+    async def update_meta(
+        self,
+        cid: uuid.UUID,
+        *,
+        title: str | None = None,
+        settings: ChatSettings | None = None,
+    ) -> ConversationMeta | None:
+        self._check()
+        conversation = self.conversations.get(cid)
+        if conversation is None:
+            return None
+        meta = replace(
+            conversation.meta,
+            title=conversation.meta.title if title is None else title,
+            settings=conversation.meta.settings if settings is None else settings,
+        )
+        self.conversations[cid] = replace(conversation, meta=meta)
+        return meta
+
+    async def replace_tail(
+        self, cid: uuid.UUID, *, revision: int, start: int, messages: Sequence[Message]
+    ) -> ConversationMeta:
+        self._check()
+        conversation = self.conversations.get(cid)
+        if conversation is None:
+            raise conversation_not_found()
+        if conversation.meta.revision != revision:
+            raise conversation_conflict()
+        if start > len(conversation.messages):
+            raise from_out_of_range(len(conversation.messages))
+        kept = conversation.messages[:start] + tuple(messages)
+        meta = replace(
+            conversation.meta,
+            revision=revision + 1,
+            message_count=len(kept),
+            updated_at=self._now(),
+        )
+        self.conversations[cid] = Conversation(meta=meta, messages=kept)
+        return meta
+
+    async def delete(self, cid: uuid.UUID) -> bool:
+        self._check()
+        return self.conversations.pop(cid, None) is not None
