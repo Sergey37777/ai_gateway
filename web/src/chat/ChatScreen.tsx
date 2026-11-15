@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { streamChat as defaultStreamChat } from "../api/chat";
 import * as conversationsApi from "../api/conversations";
-import { ApiError, isAbortError, userMessage } from "../api/errors";
+import { ApiError, userMessage } from "../api/errors";
 import type { ApiChatSettings, Conversation, ConversationItem } from "../api/types";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { conversationHash } from "../route";
@@ -14,13 +14,7 @@ import { MessageList } from "./MessageList";
 import { fromApiMessages, fromApiSettings, toApiSettings } from "./persist";
 import { buildRequest, type ChatSettings as RequestSettings } from "./request";
 import { EMPTY_SETTINGS, parseMaxTokens, parseTemperature, type SettingsDraft } from "./settings";
-import {
-  chatReducer,
-  historyBefore,
-  initialChatState,
-  type ChatAction,
-  type ChatState,
-} from "./state";
+import { useChatSession } from "./useChatSession";
 import { useConversationSaver } from "./useConversationSaver";
 
 interface Deps {
@@ -84,7 +78,6 @@ export function ChatScreen({ config, onDirtyChange, conversationId, visible, dep
     initial !== null && models.some((m) => m.id === initial.model) ? initial.model : firstModel,
   );
   const [draft, setDraft] = useState<SettingsDraft>(initial?.draft ?? EMPTY_SETTINGS);
-  const [state, setState] = useState<ChatState>(initialChatState);
   const [title, setTitle] = useState<string | null>(null);
   const [loading, setLoading] = useState<Loading>({ kind: "ready" });
   const [notice, setNotice] = useState<string | null>(null);
@@ -92,9 +85,6 @@ export function ChatScreen({ config, onDirtyChange, conversationId, visible, dep
   const [items, setItems] = useState<ConversationItem[] | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  // состояние меняется синхронно через ref: обработчики в одном тике видят актуальное значение
-  const stateRef = useRef(state);
-  const controllerRef = useRef<AbortController | null>(null);
   // какой диалог сейчас на экране (null — новый); смена пропа сравнивается с ним
   const openIdRef = useRef<string | null>(null);
   const settingsRef = useRef<RequestSettings>({
@@ -136,19 +126,26 @@ export function ChatScreen({ config, onDirtyChange, conversationId, visible, dep
     },
   });
 
-  const busy = state.streamingId !== null;
+  const apiSettings = (): ApiChatSettings => toApiSettings(settingsRef.current);
+
+  const session = useChatSession({
+    streamChat: api.streamChat,
+    buildBody: buildRequest,
+    settings: () => settingsRef.current,
+    onApply: (next, action) => {
+      // дельты стрима не меняют сохраняемое (стримящийся ответ не пишется) — не пересчитываем план
+      if (action.type !== "delta" && action.type !== "usage" && action.type !== "started") {
+        saver.sync(next.messages, apiSettings());
+      }
+    },
+  });
+  const { state, stateRef, apply, run, stop } = session;
+  const busy = session.busy;
   const conflict = saver.status.kind === "conflict";
 
   useEffect(() => {
     onDirtyChange(busy || saver.unsaved);
   }, [busy, saver.unsaved, onDirtyChange]);
-
-  useEffect(
-    () => () => {
-      controllerRef.current?.abort();
-    },
-    [],
-  );
 
   // вкладку снова показали — список диалогов перечитывается (изменения с других устройств)
   const [shownVisible, setShownVisible] = useState(visible);
@@ -156,19 +153,6 @@ export function ChatScreen({ config, onDirtyChange, conversationId, visible, dep
     setShownVisible(visible);
     if (visible) setReloadKey((key) => key + 1);
   }
-
-  const apiSettings = (): ApiChatSettings => toApiSettings(settingsRef.current);
-
-  const apply = (action: ChatAction): ChatState => {
-    const next = chatReducer(stateRef.current, action);
-    stateRef.current = next;
-    setState(next);
-    // дельты стрима не меняют сохраняемое (стримящийся ответ не пишется) — не пересчитываем план
-    if (action.type !== "delta" && action.type !== "usage" && action.type !== "started") {
-      saver.sync(next.messages, apiSettings());
-    }
-    return next;
-  };
 
   const changeSettings = (nextModel: string, nextDraft: SettingsDraft) => {
     settingsRef.current = {
@@ -182,50 +166,6 @@ export function ChatScreen({ config, onDirtyChange, conversationId, visible, dep
     setDraft(nextDraft);
     storeSettings(apiSettings());
     saver.syncSettings(apiSettings());
-  };
-
-  /** Начинает запрос для ответа, который ждёт его (`pending`). */
-  const startPending = (next: ChatState) => {
-    const id = next.pending;
-    if (id === null) return;
-    apply({ type: "started", id });
-    const controller = new AbortController();
-    controllerRef.current = controller;
-    const settings = settingsRef.current;
-    const body = buildRequest(historyBefore(next, id), settings);
-    void (async () => {
-      try {
-        for await (const event of api.streamChat(body, controller.signal)) {
-          switch (event.type) {
-            case "content":
-              apply({ type: "delta", id, content: event.text });
-              break;
-            case "reasoning":
-              apply({ type: "delta", id, reasoning: event.text });
-              break;
-            case "usage":
-              apply({ type: "usage", id, usage: event.usage });
-              break;
-          }
-        }
-        apply({ type: "finish", id, model: settings.model });
-      } catch (error) {
-        // стоп уже отражён в состоянии действием stop
-        if (isAbortError(error)) return;
-        apply({ type: "fail", id, message: userMessage(error), model: settings.model });
-      }
-    })();
-  };
-
-  const run = (action: ChatAction) => {
-    startPending(apply(action));
-  };
-
-  const stop = () => {
-    const id = stateRef.current.streamingId;
-    controllerRef.current?.abort();
-    controllerRef.current = null;
-    if (id !== null) apply({ type: "stop", id, model: settingsRef.current.model });
   };
 
   /** Показать диалог: сообщения, настройки, снимок для сохранения. */
@@ -342,8 +282,7 @@ export function ChatScreen({ config, onDirtyChange, conversationId, visible, dep
   const remove = () => {
     const id = openIdRef.current;
     if (id === null || !window.confirm(`Удалить диалог «${title ?? ""}»?`)) return;
-    controllerRef.current?.abort();
-    controllerRef.current = null;
+    session.abort();
     api.deleteConversation(id).then(
       () => {
         show(null);

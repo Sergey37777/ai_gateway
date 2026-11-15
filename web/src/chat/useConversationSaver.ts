@@ -8,7 +8,7 @@
 import { useEffect, useState } from "react";
 import type { createConversation, patchConversation, replaceTail } from "../api/conversations";
 import { ApiError, userMessage } from "../api/errors";
-import type { ApiChatSettings, ApiMessage, Conversation } from "../api/types";
+import type { ApiChatSettings, ApiMessage, Conversation, DocumentLink } from "../api/types";
 import { hasUnsaved, planWrite, titleFrom, type WritePlan } from "./persist";
 import type { ChatMessage } from "./state";
 
@@ -27,6 +27,8 @@ export interface SaverOptions {
   onCreated: (conversation: Conversation) => void;
   /** Записаны сообщения существующего диалога: поднять его в панели. */
   onSaved: (meta: { id: string; updated_at: string }) => void;
+  /** Вопрос к документу: своё название и привязка при создании диалога. */
+  createExtra?: () => { title?: string; document?: DocumentLink };
 }
 
 export interface SaverView {
@@ -219,10 +221,12 @@ export class ConversationSaver {
           first?.role === "user"
             ? titleFrom(first.text, first.images.length > 0)
             : titleFrom("", false);
+        const extra = this.options.createExtra?.() ?? {};
         const created = await api.createConversation({
-          title,
+          title: extra.title ?? title,
           settings: work.settings,
           messages: work.plan.messages,
+          ...(extra.document !== undefined && { document: extra.document }),
         });
         if (epoch !== this.epoch) return;
         this.id = created.id;

@@ -303,3 +303,25 @@ test("без изменений flush сразу true, а reset(null) — нов
   expect(api.createConversation).not.toHaveBeenCalled();
   expect(hook.result.current.conversationId).toBeNull();
 });
+
+test("createExtra: название и привязка к документу берутся из опций", () => {
+  const fake = fakeApi();
+  const document = { id: "d1", quote: "FOR UPDATE", context: "контекст" };
+  const hook = renderHook(() =>
+    useConversationSaver({
+      api: fake.api,
+      onCreated: vi.fn<SaverOptions["onCreated"]>(),
+      onSaved: vi.fn<SaverOptions["onSaved"]>(),
+      createExtra: () => ({ title: "«FOR UPDATE»", document }),
+    }),
+  );
+  act(() => {
+    hook.result.current.sync([q(0, "Что это значит?")], SETTINGS);
+  });
+  expect(fake.api.createConversation).toHaveBeenCalledWith({
+    title: "«FOR UPDATE»",
+    settings: SETTINGS,
+    messages: [{ role: "user", text: "Что это значит?", images: [] }],
+    document,
+  });
+});
