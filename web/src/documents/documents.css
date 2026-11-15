@@ -1,0 +1,309 @@
+/*
+  Превью документа — типографика GitHub/PyCharm Preview в палитре UI:
+  колонка до 880 px, заголовки h1/h2 с линией, таблицы с зеброй, цитаты с полосой.
+*/
+
+.doc-preview {
+  --doc-text: 16px;
+  color: var(--ink);
+  font-size: var(--doc-text);
+  line-height: 1.65;
+  overflow-wrap: break-word;
+}
+
+.doc-body {
+  max-width: 880px;
+  margin: 0 auto;
+}
+
+.doc-body > :first-child {
+  margin-top: 0;
+}
+
+.doc-body > :last-child {
+  margin-bottom: 0;
+}
+
+.doc-body :is(p, ul, ol, dl, blockquote, table, details, .doc-code, .doc-mermaid, .katex-display) {
+  margin: 0 0 1em;
+}
+
+.doc-body :is(h1, h2, h3, h4, h5, h6) {
+  margin: 1.6em 0 0.6em;
+  font-family: var(--font-ui);
+  font-weight: 650;
+  line-height: 1.3;
+  scroll-margin-top: 16px;
+}
+
+.doc-body h1 {
+  font-size: 2em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--line);
+  letter-spacing: -0.01em;
+}
+
+.doc-body h2 {
+  font-size: 1.5em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--line);
+}
+
+.doc-body h3 {
+  font-size: 1.25em;
+}
+
+.doc-body h4 {
+  font-size: 1em;
+}
+
+.doc-body :is(h5, h6) {
+  font-size: 0.875em;
+  color: var(--graphite);
+}
+
+.doc-body a {
+  color: var(--signal);
+  text-decoration: none;
+}
+
+.doc-body a:hover {
+  text-decoration: underline;
+}
+
+.doc-body strong {
+  font-weight: 650;
+}
+
+.doc-body :is(ul, ol) {
+  padding-left: 2em;
+}
+
+.doc-body li + li,
+.doc-body li > :is(ul, ol) {
+  margin-top: 0.25em;
+}
+
+.doc-body li > :is(ul, ol) {
+  margin-bottom: 0;
+}
+
+.doc-body li.task-list-item {
+  list-style: none;
+}
+
+.doc-body .contains-task-list {
+  padding-left: 1.4em;
+}
+
+.doc-body li.task-list-item > input {
+  margin: 0 0.45em 0 -1.4em;
+  vertical-align: -0.1em;
+  accent-color: var(--signal);
+}
+
+.doc-body blockquote {
+  padding: 0 1em;
+  color: var(--graphite);
+  border-left: 0.25em solid var(--signal-quiet);
+}
+
+.doc-body hr {
+  height: 0.25em;
+  margin: 1.6em 0;
+  border: 0;
+  background: var(--line);
+  border-radius: 2px;
+}
+
+.doc-body img {
+  max-width: 100%;
+  border-radius: var(--r-s);
+}
+
+.doc-body :not(pre) > code {
+  font-family: var(--mono);
+  font-size: 0.86em;
+  padding: 0.15em 0.4em;
+  background: var(--sheet-2);
+  border-radius: 6px;
+}
+
+.doc-body table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 0.95em;
+}
+
+.doc-body :is(th, td) {
+  padding: 6px 13px;
+  border: 1px solid var(--line);
+}
+
+.doc-body th {
+  font-weight: 650;
+  background: var(--sheet-2);
+}
+
+.doc-body tbody tr:nth-child(2n) {
+  background: color-mix(in srgb, var(--sheet-2) 55%, transparent);
+}
+
+.doc-body details {
+  padding: 0.5em 0.9em;
+  border: 1px solid var(--line);
+  border-radius: var(--r-s);
+}
+
+.doc-body summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.doc-body kbd {
+  display: inline-block;
+  padding: 0.1em 0.45em;
+  font-family: var(--mono);
+  font-size: 0.8em;
+  line-height: 1.4;
+  background: var(--sheet-2);
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+}
+
+.doc-body mark {
+  background: color-mix(in srgb, #ffd84d 55%, transparent);
+  color: inherit;
+}
+
+/* сноски GFM */
+
+.doc-body .footnotes {
+  margin-top: 2.5em;
+  padding-top: 1em;
+  font-size: 0.875em;
+  color: var(--graphite);
+  border-top: 1px solid var(--line);
+}
+
+.doc-body .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.doc-body [data-footnote-ref] {
+  font-size: 0.8em;
+}
+
+/* код: подпись языка поверх CodeBlock чата */
+
+.doc-code {
+  position: relative;
+}
+
+.doc-code-lang {
+  position: absolute;
+  top: 7px;
+  left: 14px;
+  z-index: 1;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--graphite);
+  text-transform: lowercase;
+  pointer-events: none;
+}
+
+.doc-code:has(.doc-code-lang) pre {
+  padding-top: 28px;
+}
+
+.doc-body pre {
+  font-family: var(--mono);
+  font-size: 0.86em;
+  line-height: 1.5;
+}
+
+.doc-body .code-block pre {
+  background: var(--sheet-2);
+  border-color: transparent;
+}
+
+/* формулы */
+
+.doc-body .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.2em 0;
+}
+
+.doc-body .katex-error {
+  color: var(--danger);
+}
+
+/* Mermaid */
+
+.doc-mermaid {
+  display: flex;
+  justify-content: center;
+  overflow-x: auto;
+  padding: 12px;
+  background: var(--sheet-2);
+  border-radius: var(--r-m);
+}
+
+.doc-mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.doc-mermaid-error {
+  display: block;
+}
+
+.doc-mermaid-code {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.doc-error {
+  margin: 8px 0 0;
+  color: var(--danger);
+  font-size: 0.85em;
+}
+
+/* то, что разрешить нечем: соседние файлы и картинки */
+
+.doc-image-missing {
+  display: inline-flex;
+  gap: 6px;
+  padding: 0.4em 0.8em;
+  color: var(--graphite);
+  font-size: 0.9em;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-s);
+}
+
+.doc-link-missing {
+  color: var(--graphite);
+  text-decoration: underline dotted;
+  cursor: help;
+}
+
+/* обычный текст */
+
+.doc-plain {
+  max-width: 880px;
+  margin: 0 auto;
+  font-family: var(--mono);
+  font-size: 0.9em;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

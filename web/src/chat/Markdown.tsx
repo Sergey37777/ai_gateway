@@ -4,7 +4,7 @@ import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import { copyText } from "../components/copyText";
 
-function CodeBlock(props: ComponentPropsWithoutRef<"pre">) {
+export function CodeBlock(props: ComponentPropsWithoutRef<"pre">) {
   const ref = useRef<HTMLPreElement>(null);
   const [copied, setCopied] = useState(false);
   return (
