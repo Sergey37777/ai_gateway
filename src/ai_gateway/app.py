@@ -13,6 +13,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from ai_gateway.api import audio, chat, health, models, transcriptions, ui
 from ai_gateway.api import conversations as conversations_api
+from ai_gateway.api import documents as documents_api
 from ai_gateway.api.deps import api_key_valid, invalid_api_key
 from ai_gateway.backends import build_backend
 from ai_gateway.backends.base import ChatBackend
@@ -25,7 +26,13 @@ from ai_gateway.config import (
 )
 from ai_gateway.conversations import ConversationStore, SqlConversationStore
 from ai_gateway.db.engine import create_engine, make_sessions, migrate
-from ai_gateway.errors import error_response, install_error_handlers, internal_error
+from ai_gateway.documents import DocumentStore, SqlDocumentStore
+from ai_gateway.errors import (
+    GatewayError,
+    error_response,
+    install_error_handlers,
+    internal_error,
+)
 from ai_gateway.files import DataDir, file_too_large
 from ai_gateway.jobs import TranscriptionService, Worker
 from ai_gateway.lifecycle import ModelManager
@@ -37,6 +44,7 @@ TRANSCRIPTIONS_PATH = "/v1/audio/transcriptions"
 CHAT_PATH = "/v1/chat/completions"
 JOBS_PATH = "/api/transcriptions"
 CONVERSATIONS_PATH = "/api/conversations"
+DOCUMENTS_PATH = "/api/documents"
 GUARDED_PATHS = frozenset({TRANSCRIPTIONS_PATH, CHAT_PATH, JOBS_PATH, CONVERSATIONS_PATH})
 # ключ API нужен OpenAI-совместимому API и собственному API шлюза
 PROTECTED_PREFIXES = ("/v1/", "/api/")
@@ -134,6 +142,13 @@ def _guarded(method: str, path: str) -> bool:
     )
 
 
+def _document_body(method: str, path: str) -> bool:
+    """Создание документа и запись его текста — со своим лимитом `max_document_mb`."""
+    if method == "POST":
+        return path == DOCUMENTS_PATH
+    return method == "PUT" and path.startswith(DOCUMENTS_PATH + "/") and path.endswith("/text")
+
+
 class UploadSizeGuardMiddleware:
     """Ограничивает размер тела загрузки, не дочитывая лишнее.
 
@@ -142,29 +157,41 @@ class UploadSizeGuardMiddleware:
     считаются по мере чтения, и при превышении клиент получает 413, а приложение — disconnect.
     """
 
-    def __init__(self, app: ASGIApp, *, max_upload_mb: int) -> None:
+    def __init__(self, app: ASGIApp, *, max_upload_mb: int, max_document_mb: int = 5) -> None:
         self.app = app
         self.max_upload_mb = max_upload_mb
-        # запас 1 МиБ на multipart-обвязку и остальные поля формы
+        self.max_document_mb = max_document_mb
+        # запас 1 МиБ на multipart-обвязку и остальные поля формы (у документа — на JSON)
         self.max_body = max_upload_mb * MIB + MIB
+        self.max_document_body = max_document_mb * MIB + MIB
+
+    def _error(self, path: str) -> GatewayError:
+        # JSON-тела (чат, диалоги, документы) — «запрос слишком большой», загрузки — «файл…»
+        if path.startswith(DOCUMENTS_PATH):
+            return chat.request_too_large(self.max_document_mb)
+        if path == CHAT_PATH or path.startswith(CONVERSATIONS_PATH):
+            return chat.request_too_large(self.max_upload_mb)
+        return file_too_large(self.max_upload_mb)
 
     async def _reject(self, scope: Scope, receive: Receive, send: Send) -> None:
-        # JSON-тела (чат, диалоги) — «запрос слишком большой», загрузки — «файл слишком большой»
-        error = (
-            chat.request_too_large(self.max_upload_mb)
-            if scope["path"] == CHAT_PATH or scope["path"].startswith(CONVERSATIONS_PATH)
-            else file_too_large(self.max_upload_mb)
-        )
-        response = error_response(error)
+        response = error_response(self._error(scope["path"]))
         await response(scope, receive, send)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if not (scope["type"] == "http" and _guarded(scope["method"], scope["path"])):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        method, path = scope["method"], scope["path"]
+        if _document_body(method, path):
+            max_body = self.max_document_body
+        elif _guarded(method, path):
+            max_body = self.max_body
+        else:
             await self.app(scope, receive, send)
             return
 
         raw = dict(scope["headers"]).get(b"content-length")
-        if raw is not None and raw.isdigit() and int(raw) > self.max_body:
+        if raw is not None and raw.isdigit() and int(raw) > max_body:
             await self._reject(scope, receive, send)
             return
 
@@ -178,7 +205,7 @@ class UploadSizeGuardMiddleware:
             message = await receive()
             if message["type"] == "http.request":
                 received += len(message.get("body", b""))
-                if received > self.max_body:
+                if received > max_body:
                     rejected = True
                     await self._reject(scope, receive, send)
                     # приложение видит обрыв соединения и прекращает разбор тела
@@ -205,6 +232,7 @@ def create_app(
     chat_backend: ChatBackend | None = None,
     store: TranscriptionStore | None = None,
     conversations: ConversationStore | None = None,
+    documents: DocumentStore | None = None,
 ) -> FastAPI:
     """Фабрика приложения; реестр, менеджер, чат-бэкенд и хранилища можно внедрить (тесты)."""
     settings = settings if settings is not None else Settings()
@@ -238,13 +266,16 @@ def create_app(
         engine = None
         jobs_store: TranscriptionStore | None = app.state.store
         chats: ConversationStore | None = app.state.conversations
-        if jobs_store is None or chats is None:
+        docs: DocumentStore | None = app.state.documents
+        if jobs_store is None or chats is None or docs is None:
             engine = create_engine(settings.database_url)
             await asyncio.to_thread(migrate, settings.database_url)
             sessions = make_sessions(engine)
             jobs_store = jobs_store or SqlTranscriptionStore(sessions)
             chats = chats or SqlConversationStore(sessions)
+            docs = docs or SqlDocumentStore(sessions)
         app.state.conversations = chats
+        app.state.documents = docs
         files = DataDir(settings.data_dir)
         files.ensure()
         service = TranscriptionService(jobs_store, mgr, files, max_upload_mb=settings.max_upload_mb)
@@ -275,6 +306,7 @@ def create_app(
     app.state.chat_backend = chat_backend
     app.state.store = store
     app.state.conversations = conversations
+    app.state.documents = documents
     app.state.service = None
     # без lifespan (тесты) устройство берётся из настроек; lifespan уточняет его
     app.state.device = "cpu" if settings.device == "auto" else settings.device
@@ -285,6 +317,7 @@ def create_app(
     app.include_router(models.router, prefix="/v1")
     app.include_router(transcriptions.router, prefix="/api")
     app.include_router(conversations_api.router, prefix="/api")
+    app.include_router(documents_api.router, prefix="/api")
     app.include_router(health.router)
     app.include_router(ui.router)
     # статика UI — последней: `/v1/*`, `/health`, `/ui/config` матчатся раньше
@@ -292,7 +325,11 @@ def create_app(
 
     # последний добавленный middleware — внешний: request id оборачивает всё (включая 401/413),
     # ключ проверяется раньше, чем считается размер тела
-    app.add_middleware(UploadSizeGuardMiddleware, max_upload_mb=settings.max_upload_mb)
+    app.add_middleware(
+        UploadSizeGuardMiddleware,
+        max_upload_mb=settings.max_upload_mb,
+        max_document_mb=settings.max_document_mb,
+    )
     app.add_middleware(ApiKeyMiddleware, api_key=settings.api_key)
     app.add_middleware(RequestContextMiddleware)
     return app

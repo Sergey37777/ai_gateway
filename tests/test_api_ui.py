@@ -6,11 +6,12 @@ import pytest
 
 
 async def test_ui_config(make_client):
-    client = await make_client(max_upload_mb=50)
+    client = await make_client(max_upload_mb=50, max_document_mb=3)
     r = await client.get("/ui/config")
     assert r.status_code == 200
     body = r.json()
     assert body["max_upload_mb"] == 50
+    assert body["max_document_mb"] == 3
     assert body["auth_required"] is False
     assert body["default_transcription"] == "whisper-large-v3-turbo"
     # порядок REGISTRY_DATA, без алиасов whisper-1 / gpt-4o-mini

@@ -18,7 +18,7 @@ from openai.types.chat import ChatCompletionMessageParam
 
 from ai_gateway.app import create_app
 from ai_gateway.config import Settings
-from tests.fakes import InMemoryConversationStore, InMemoryTranscriptionStore
+from tests.fakes import InMemoryConversationStore, InMemoryDocumentStore, InMemoryTranscriptionStore
 
 pytestmark = pytest.mark.integration
 
@@ -62,7 +62,10 @@ def require_model(settings: Settings) -> Callable[[str], None]:
 async def app(settings: Settings) -> AsyncIterator[FastAPI]:
     # чату история распознаваний не нужна — PostgreSQL не требуется
     application = create_app(
-        settings, store=InMemoryTranscriptionStore(), conversations=InMemoryConversationStore()
+        settings,
+        store=InMemoryTranscriptionStore(),
+        conversations=InMemoryConversationStore(),
+        documents=InMemoryDocumentStore(),
     )
     async with application.router.lifespan_context(application):
         yield application

@@ -7,6 +7,7 @@ from fastapi import Request
 from ai_gateway.backends.base import ChatBackend
 from ai_gateway.config import Settings
 from ai_gateway.conversations import ConversationStore
+from ai_gateway.documents import DocumentStore
 from ai_gateway.errors import GatewayError
 from ai_gateway.jobs import TranscriptionService
 from ai_gateway.lifecycle import ModelManager
@@ -42,6 +43,11 @@ def get_store(request: Request) -> TranscriptionStore:
 def get_conversations(request: Request) -> ConversationStore:
     conversations: ConversationStore = request.app.state.conversations
     return conversations
+
+
+def get_documents(request: Request) -> DocumentStore:
+    documents: DocumentStore = request.app.state.documents
+    return documents
 
 
 def get_service(request: Request) -> TranscriptionService:

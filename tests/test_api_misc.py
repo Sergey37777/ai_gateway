@@ -5,7 +5,7 @@ import pytest
 from ai_gateway.app import create_app
 from ai_gateway.config import Settings
 from ai_gateway.lifecycle import ModelStatus
-from tests.fakes import InMemoryConversationStore, InMemoryTranscriptionStore
+from tests.fakes import InMemoryConversationStore, InMemoryDocumentStore, InMemoryTranscriptionStore
 
 IDS = ["gpt-4o-mini", "qwen3-14b", "whisper-1", "whisper-large-v3", "whisper-large-v3-turbo"]
 
@@ -152,7 +152,10 @@ async def test_lifespan_builds_from_settings(tmp_path):
         _env_file=None, device="cpu", models_file=models_file, data_dir=tmp_path / "data"
     )
     app = create_app(
-        settings, store=InMemoryTranscriptionStore(), conversations=InMemoryConversationStore()
+        settings,
+        store=InMemoryTranscriptionStore(),
+        conversations=InMemoryConversationStore(),
+        documents=InMemoryDocumentStore(),
     )
     async with app.router.lifespan_context(app):
         assert (tmp_path / "data" / "uploads").is_dir()
@@ -180,6 +183,7 @@ async def test_lifespan_keeps_injected_chat_backend(tmp_path):
         chat_backend=injected,
         store=InMemoryTranscriptionStore(),
         conversations=InMemoryConversationStore(),
+        documents=InMemoryDocumentStore(),
     )
     async with app.router.lifespan_context(app):
         assert app.state.chat_backend is injected

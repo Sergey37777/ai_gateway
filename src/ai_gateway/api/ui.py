@@ -19,6 +19,7 @@ async def ui_config(
 ) -> dict[str, object]:
     return {
         "max_upload_mb": settings.max_upload_mb,
+        "max_document_mb": settings.max_document_mb,
         # сам ключ не отдаётся: UI лишь узнаёт, что его надо спросить
         "auth_required": bool(settings.api_key),
         "default_transcription": registry.default_transcription,

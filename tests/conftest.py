@@ -72,6 +72,7 @@ class MakeClient(Protocol):
         *,
         api_key: str | None = None,
         max_upload_mb: int = 200,
+        max_document_mb: int = 5,
         backend: FakeTranscriptionBackend | None = None,
         ollama: FakeOllama | None = None,
         web_dir: Path | None = None,
@@ -89,6 +90,7 @@ async def make_client(tmp_path: Path) -> AsyncIterator[MakeClient]:
         *,
         api_key: str | None = None,
         max_upload_mb: int = 200,
+        max_document_mb: int = 5,
         backend: FakeTranscriptionBackend | None = None,
         ollama: FakeOllama | None = None,
         web_dir: Path | None = None,
@@ -104,6 +106,7 @@ async def make_client(tmp_path: Path) -> AsyncIterator[MakeClient]:
             device="cpu",
             api_key=api_key,
             max_upload_mb=max_upload_mb,
+            max_document_mb=max_document_mb,
             # без явного каталога — несуществующий: тесты не зависят от наличия сборки UI
             web_dir=web_dir if web_dir is not None else tmp_path / "no-web",
             data_dir=tmp_path / f"data-{len(clients)}",
@@ -122,6 +125,7 @@ async def make_client(tmp_path: Path) -> AsyncIterator[MakeClient]:
             chat_backend=chat_backend,
             store=store,
             conversations=conversations,
+            documents=documents,
         )
         await lifespans.enter_async_context(app.router.lifespan_context(app))
         # тестовые байты — не аудио: Opus кодирует фейк (настоящий — tests/test_opus.py)
