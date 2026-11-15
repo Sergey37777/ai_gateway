@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     compute_type: str = "auto"
     api_key: str | None = None
     max_upload_mb: int = 200
+    # документы (этап 6): предел текста одного документа
+    max_document_mb: int = 5
     models_file: Path = Path("models.yaml")
     default_ttl: int = 600
     sweep_interval: float = 30.0

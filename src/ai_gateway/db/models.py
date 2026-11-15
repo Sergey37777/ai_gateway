@@ -91,6 +91,40 @@ MESSAGE_ROLE_FIELDS = (
 )
 
 
+# у tsvector предел 1 МБ: в поиск идёт начало текста (документ до AIGW_MAX_DOCUMENT_MB)
+DOCUMENT_SEARCH = (
+    "setweight(to_tsvector('russian'::regconfig, title), 'A') || "
+    "to_tsvector('russian'::regconfig, left(text, 1000000))"
+)
+CONVERSATION_DOCUMENT = (
+    "(document_id IS NULL AND quote IS NULL AND context IS NULL) "
+    "OR (document_id IS NOT NULL AND quote IS NOT NULL AND context IS NOT NULL)"
+)
+
+
+class DocumentRow(Base):
+    """Документ (этап 6): текст Markdown или обычный; вопросы к нему — диалоги с `document_id`."""
+
+    __tablename__ = "documents"
+    __table_args__ = (
+        CheckConstraint("format IN ('markdown', 'text')", name="ck_documents_format"),
+        Index("ix_documents_updated", "updated_at", "id"),
+        Index("ix_documents_search", "search", postgresql_using="gin"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    title: Mapped[str] = mapped_column(Text)
+    filename: Mapped[str] = mapped_column(Text)
+    format: Mapped[str] = mapped_column(Text)
+    text: Mapped[str] = mapped_column(Text)
+    # length(text): список документов не читает сам текст
+    chars: Mapped[int] = mapped_column(Integer)
+    revision: Mapped[int] = mapped_column(Integer, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    search: Mapped[str] = mapped_column(TSVECTOR, Computed(DOCUMENT_SEARCH, persisted=True))
+
+
 class ConversationRow(Base):
     """Диалог чата (этап 5); сообщения — `ConversationMessageRow`."""
 
@@ -98,6 +132,8 @@ class ConversationRow(Base):
     __table_args__ = (
         Index("ix_conversations_updated", "updated_at", "id"),
         Index("ix_conversations_search", "search", postgresql_using="gin"),
+        Index("ix_conversations_document", "document_id", "updated_at", "id"),
+        CheckConstraint(CONVERSATION_DOCUMENT, name="ck_conversations_document"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
@@ -108,6 +144,12 @@ class ConversationRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     search: Mapped[str] = mapped_column(TSVECTOR, Computed(CONVERSATION_SEARCH, persisted=True))
+    # вопрос к документу (этап 6): документ, выделенный фрагмент и снимок контекста для модели
+    document_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE")
+    )
+    quote: Mapped[str | None] = mapped_column(Text)
+    context: Mapped[str | None] = mapped_column(Text)
 
 
 class ConversationMessageRow(Base):

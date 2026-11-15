@@ -19,6 +19,7 @@ def test_defaults():
     s = Settings()
     assert (s.device, s.compute_type, s.api_key) == ("auto", "auto", None)
     assert (s.max_upload_mb, s.default_ttl, s.sweep_interval) == (200, 600, 30.0)
+    assert s.max_document_mb == 5
     assert s.models_file == Path("models.yaml")
     assert s.log_level == "INFO"
     assert (s.ollama_url, s.ollama_read_timeout) == ("http://localhost:11434", 300.0)

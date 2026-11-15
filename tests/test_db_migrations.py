@@ -126,3 +126,99 @@ async def test_downgrade_0001_drops_only_conversations(pg_engine, postgres_url):
     assert {"transcriptions", "transcription_results"} <= tables
     await asyncio.to_thread(migrate, postgres_url)
     assert CONVERSATION_TABLES <= await _tables(pg_engine)
+
+
+async def _columns(engine: AsyncEngine, table: str) -> set[str]:
+    async with engine.connect() as connection:
+        rows = await connection.execute(
+            text("SELECT column_name FROM information_schema.columns WHERE table_name = :t"),
+            {"t": table},
+        )
+        return {row[0] for row in rows}
+
+
+async def _insert_document(connection: AsyncConnection, title: str = "Документ") -> uuid.UUID:
+    did = uuid.uuid4()
+    await connection.execute(
+        text(
+            "INSERT INTO documents (id, title, filename, format, text, chars) "
+            "VALUES (:id, :title, 'a.md', 'markdown', 'Распознавание речи', 18)"
+        ),
+        {"id": did, "title": title},
+    )
+    return did
+
+
+async def test_upgrade_creates_documents(pg_engine):
+    assert "documents" in await _tables(pg_engine)
+    assert {"document_id", "quote", "context"} <= await _columns(pg_engine, "conversations")
+
+
+async def test_document_format_check(pg_engine):
+    with pytest.raises(IntegrityError):
+        async with pg_engine.begin() as connection:
+            await connection.execute(
+                text(
+                    "INSERT INTO documents (id, title, filename, format, text, chars) "
+                    "VALUES (:id, 't', 'a.html', 'html', '', 0)"
+                ),
+                {"id": uuid.uuid4()},
+            )
+
+
+async def test_document_search_title_and_text(pg_engine):
+    async with pg_engine.begin() as connection:
+        await _insert_document(connection, "Котики")
+        found = await connection.execute(
+            text(
+                "SELECT count(*) FROM documents WHERE search @@ websearch_to_tsquery('russian', "
+                "'котик') AND search @@ websearch_to_tsquery('russian', 'распознавания')"
+            )
+        )
+        assert found.scalar_one() == 1
+
+
+async def test_conversation_document_check_and_cascade(pg_engine):
+    async with pg_engine.begin() as connection:
+        did = await _insert_document(connection)
+        await connection.execute(
+            text(
+                "INSERT INTO conversations (id, title, settings, document_id, quote, context) "
+                "VALUES (:id, 'q', '{}', :did, 'цитата', 'контекст')"
+            ),
+            {"id": uuid.uuid4(), "did": did},
+        )
+    with pytest.raises(IntegrityError):
+        async with pg_engine.begin() as connection:
+            await connection.execute(
+                text(
+                    "INSERT INTO conversations (id, title, settings, document_id) "
+                    "VALUES (:id, 'q', '{}', :did)"
+                ),
+                {"id": uuid.uuid4(), "did": did},
+            )
+    async with pg_engine.begin() as connection:
+        await connection.execute(text("DELETE FROM documents WHERE id = :id"), {"id": did})
+        left = await connection.execute(text("SELECT count(*) FROM conversations"))
+        assert left.scalar_one() == 0
+
+
+async def test_downgrade_0002_drops_documents(pg_engine, postgres_url):
+    async with pg_engine.begin() as connection:
+        did = await _insert_document(connection)
+        await _insert_conversation(connection, "обычный")
+        await connection.execute(
+            text(
+                "INSERT INTO conversations (id, title, settings, document_id, quote, context) "
+                "VALUES (:id, 'вопрос', '{}', :did, 'ц', 'к')"
+            ),
+            {"id": uuid.uuid4(), "did": did},
+        )
+    await asyncio.to_thread(downgrade, postgres_url, "0002")
+    assert "documents" not in await _tables(pg_engine)
+    assert "document_id" not in await _columns(pg_engine, "conversations")
+    async with pg_engine.connect() as connection:
+        titles = await connection.execute(text("SELECT title FROM conversations"))
+        assert [row[0] for row in titles] == ["обычный"]
+    await asyncio.to_thread(migrate, postgres_url)
+    assert "documents" in await _tables(pg_engine)

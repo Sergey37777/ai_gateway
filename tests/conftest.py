@@ -166,5 +166,5 @@ async def pg_engine(postgres_url: str) -> AsyncIterator[AsyncEngine]:
     engine = create_engine(postgres_url)
     yield engine
     async with engine.begin() as connection:
-        await connection.execute(text("TRUNCATE transcriptions, conversations CASCADE"))
+        await connection.execute(text("TRUNCATE transcriptions, conversations, documents CASCADE"))
     await engine.dispose()

@@ -74,6 +74,17 @@ def conversation_conflict() -> GatewayError:
     )
 
 
+def document_not_found() -> GatewayError:
+    return GatewayError(404, "document_not_found", "Документ не найден")
+
+
+def document_conflict() -> GatewayError:
+    """409: `revision` не совпал — документ изменили в другой вкладке или на другом устройстве."""
+    return GatewayError(
+        409, "document_conflict", "Документ изменён в другом месте — загрузите его заново"
+    )
+
+
 def invalid_state(message: str) -> GatewayError:
     """409: действие не подходит к текущему статусу распознавания."""
     return GatewayError(409, "invalid_state", message)
