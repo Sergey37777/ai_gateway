@@ -7,6 +7,7 @@ import type { UiConfig } from "./api/types";
 
 const CONFIG: UiConfig = {
   max_upload_mb: 200,
+  max_document_mb: 5,
   auth_required: false,
   default_transcription: "whisper-base",
   models: [

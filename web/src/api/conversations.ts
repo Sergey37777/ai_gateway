@@ -13,6 +13,7 @@ import type {
   ConversationItem,
   ConversationMeta,
   ConversationPage,
+  DocumentLink,
   TailResult,
 } from "./types";
 
@@ -26,6 +27,12 @@ function numberOrNull(value: unknown): value is number | null {
 
 function stringOrNull(value: unknown): value is string | null {
   return value === null || typeof value === "string";
+}
+
+/** Поле вопроса к документу: нет — `null` (ответ шлюза до этапа 6, фикстуры). */
+function optionalString(value: unknown): string | null | undefined {
+  if (value === undefined || value === null) return null;
+  return typeof value === "string" ? value : undefined;
 }
 
 export function parseSettings(value: unknown): ApiChatSettings | null {
@@ -110,6 +117,10 @@ export function parseMeta(value: unknown): ConversationMeta | null {
     updated_at: updated,
   } = value;
   const settings = parseSettings(value["settings"]);
+  const documentId = optionalString(value["document_id"]);
+  const quote = optionalString(value["quote"]);
+  const context = optionalString(value["context"]);
+  if (documentId === undefined || quote === undefined || context === undefined) return null;
   if (
     typeof id !== "string" ||
     typeof title !== "string" ||
@@ -129,6 +140,9 @@ export function parseMeta(value: unknown): ConversationMeta | null {
     message_count: count,
     created_at: created,
     updated_at: updated,
+    document_id: documentId,
+    quote,
+    context,
   };
 }
 
@@ -164,6 +178,9 @@ export function parseItem(value: unknown): ConversationItem | null {
   ) {
     return null;
   }
+  const documentId = optionalString(value["document_id"]);
+  const quote = optionalString(value["quote"]);
+  if (documentId === undefined || quote === undefined) return null;
   const item: ConversationItem = {
     id,
     title,
@@ -171,6 +188,8 @@ export function parseItem(value: unknown): ConversationItem | null {
     message_count: count,
     created_at: created,
     updated_at: updated,
+    document_id: documentId,
+    quote,
   };
   if (typeof value["snippet"] === "string") item.snippet = value["snippet"];
   return item;
@@ -188,13 +207,15 @@ function path(id: string): string {
   return `${BASE}/${encodeURIComponent(id)}`;
 }
 
+/** Без `document` — обычные диалоги; с ним — вопросы этого документа. */
 export async function listConversations(
-  params: { q?: string; before?: string },
+  params: { q?: string; before?: string; document?: string },
   signal?: AbortSignal,
 ): Promise<ConversationPage> {
   const query = new URLSearchParams();
   if (params.q !== undefined && params.q !== "") query.set("q", params.q);
   if (params.before !== undefined) query.set("before", params.before);
+  if (params.document !== undefined) query.set("document", params.document);
   const suffix = query.size > 0 ? `?${query.toString()}` : "";
   const data = await json(`${BASE}${suffix}`, signal ? { signal } : {});
   if (!isRecord(data) || !Array.isArray(data["data"])) throw invalid();
@@ -215,6 +236,7 @@ export async function createConversation(body: {
   title: string;
   settings: ApiChatSettings;
   messages: ApiMessage[];
+  document?: DocumentLink;
 }): Promise<Conversation> {
   const conversation = parseConversation(await json(BASE, jsonInit("POST", body)));
   if (conversation === null) throw invalid();

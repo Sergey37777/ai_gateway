@@ -16,7 +16,11 @@ export async function fetchConfig(fetchFn: typeof fetch = fetch): Promise<UiConf
   }
   const data: unknown = JSON.parse(body);
   if (!isUiConfig(data)) throw new Error("Некорректный ответ /ui/config");
-  return data;
+  // шлюз до этапа 6 лимита документов не присылал
+  return {
+    ...data,
+    max_document_mb: typeof data.max_document_mb === "number" ? data.max_document_mb : 5,
+  };
 }
 
 function isUiConfig(value: unknown): value is UiConfig {

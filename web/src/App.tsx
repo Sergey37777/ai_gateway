@@ -91,7 +91,7 @@ export function App() {
 
   const selectTab = (id: Tab) => {
     const conversationId = id === "chat" ? chatId : null;
-    setRoute({ tab: id, recordId: null, conversationId });
+    setRoute({ tab: id, recordId: null, conversationId, documentId: null, questionId: null });
     window.location.hash = conversationId === null ? id : conversationHash(conversationId);
   };
 

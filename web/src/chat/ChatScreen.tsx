@@ -118,6 +118,8 @@ export function ChatScreen({ config, onDirtyChange, conversationId, visible, dep
           message_count: conversation.message_count,
           created_at: conversation.created_at,
           updated_at: conversation.updated_at,
+          document_id: conversation.document_id,
+          quote: conversation.quote,
         },
         ...(current ?? []).filter((item) => item.id !== conversation.id),
       ]);

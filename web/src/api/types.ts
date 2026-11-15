@@ -15,6 +15,8 @@ export interface UiLanguage {
 /** Ответ `GET /ui/config`. */
 export interface UiConfig {
   max_upload_mb: number;
+  /** Предел текста документа (этап 6). */
+  max_document_mb: number;
   auth_required: boolean;
   default_transcription: string;
   models: UiModel[];
@@ -119,6 +121,10 @@ export interface ConversationMeta {
   message_count: number;
   created_at: string;
   updated_at: string;
+  /** Вопрос к документу (этап 6); у обычного диалога — `null`. */
+  document_id: string | null;
+  quote: string | null;
+  context: string | null;
 }
 
 export interface Conversation extends ConversationMeta {
@@ -133,6 +139,8 @@ export interface ConversationItem {
   message_count: number;
   created_at: string;
   updated_at: string;
+  document_id: string | null;
+  quote: string | null;
   snippet?: string;
 }
 
@@ -146,4 +154,47 @@ export interface TailResult {
   revision: number;
   updated_at: string;
   message_count: number;
+}
+
+/** Привязка вопроса к документу при создании диалога. */
+export interface DocumentLink {
+  id: string;
+  quote: string;
+  context: string;
+}
+
+export type DocumentFormat = "markdown" | "text";
+
+/** Документ без текста (ответ `PATCH`, элемент списка). */
+export interface DocumentMeta {
+  id: string;
+  title: string;
+  filename: string;
+  format: DocumentFormat;
+  chars: number;
+  revision: number;
+  question_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Элемент списка документов; `snippet` — только в результатах поиска (`null` — совпало название). */
+export interface DocumentItem extends DocumentMeta {
+  snippet?: string;
+}
+
+export interface ApiDocument extends DocumentMeta {
+  text: string;
+}
+
+export interface DocumentPage {
+  data: DocumentItem[];
+  next: string | null;
+}
+
+/** Ответ `PUT /api/documents/{id}/text`. */
+export interface TextWriteResult {
+  revision: number;
+  updated_at: string;
+  chars: number;
 }

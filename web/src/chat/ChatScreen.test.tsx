@@ -11,6 +11,7 @@ import { ChatScreen } from "./ChatScreen";
 
 const CONFIG: UiConfig = {
   max_upload_mb: 200,
+  max_document_mb: 5,
   auth_required: false,
   default_transcription: "whisper-base",
   models: [
@@ -84,6 +85,9 @@ function stored(id: string, overrides: Partial<Conversation> = {}): Conversation
     message_count: 2,
     created_at: STAMP,
     updated_at: STAMP,
+    document_id: null,
+    quote: null,
+    context: null,
     messages: [
       { role: "user", text: "Старый вопрос", images: [] },
       {
@@ -123,6 +127,8 @@ function fakeConversations(initial: Conversation[] = []) {
           message_count: c.messages.length,
           created_at: c.created_at,
           updated_at: c.updated_at,
+          document_id: null,
+          quote: null,
         })),
         next: null,
       }),
@@ -137,6 +143,9 @@ function fakeConversations(initial: Conversation[] = []) {
         message_count: body.messages.length,
         created_at: STAMP,
         updated_at: STAMP,
+        document_id: body.document?.id ?? null,
+        quote: body.document?.quote ?? null,
+        context: body.document?.context ?? null,
       };
       store.set(conversation.id, conversation);
       return Promise.resolve(conversation);

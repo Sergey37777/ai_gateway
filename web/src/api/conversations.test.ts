@@ -120,9 +120,37 @@ test("listConversations: поиск, ключ и разбор", async () => {
       message_count: 2,
       created_at: META.created_at,
       updated_at: META.updated_at,
+      document_id: null,
+      quote: null,
       snippet: "«кот»",
     },
   ]);
+});
+
+test("вопрос к документу: поля разбираются, фильтр списка и привязка при создании", async () => {
+  const asked = { ...CONVERSATION, document_id: "d1", quote: "цитата", context: "контекст" };
+  const parsed = parseConversation(asked);
+  expect([parsed?.document_id, parsed?.quote, parsed?.context]).toEqual([
+    "d1",
+    "цитата",
+    "контекст",
+  ]);
+  expect(parseConversation(CONVERSATION)?.document_id).toBeNull();
+  fetchMock.mockResolvedValue(
+    respond(200, { data: [{ ...META, model: "m", document_id: "d1", quote: "ц" }], next: null }),
+  );
+  const page = await listConversations({ document: "d1" });
+  expect(lastCall().url).toBe("/api/conversations?document=d1");
+  expect(page.data[0]?.quote).toBe("ц");
+  fetchMock.mockResolvedValue(respond(201, asked));
+  const document = { id: "d1", quote: "цитата", context: "контекст" };
+  await createConversation({ title: "ц", settings: SETTINGS, messages: [], document });
+  expect(bodyOf(lastCall().init)).toEqual({
+    title: "ц",
+    settings: SETTINGS,
+    messages: [],
+    document,
+  });
 });
 
 test("getConversation и createConversation", async () => {

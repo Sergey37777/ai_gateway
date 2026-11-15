@@ -15,6 +15,8 @@ function item(id: string, title: string, extra: Partial<ConversationItem> = {}):
     message_count: 2,
     created_at: "2026-11-08T10:00:00Z",
     updated_at: "2026-11-08T10:00:00Z",
+    document_id: null,
+    quote: null,
     ...extra,
   };
 }
