@@ -23,6 +23,7 @@ from ai_gateway.conversations import (
     ChatSettings,
     Conversation,
     ConversationMeta,
+    DocumentLink,
     Message,
     from_out_of_range,
 )
@@ -473,7 +474,9 @@ def fake_encode(_src: Path, dst: Path) -> int:
 class InMemoryConversationStore:
     """`ConversationStore` в памяти: та же семантика `replace_tail`; поиск — подстрока."""
 
-    def __init__(self) -> None:
+    def __init__(self, documents: "InMemoryDocumentStore | None" = None) -> None:
+        # документы для проверки привязки вопросов (этап 6)
+        self.documents = documents
         self.conversations: dict[uuid.UUID, Conversation] = {}
         self.available = True
         self._tick = 0
@@ -488,9 +491,17 @@ class InMemoryConversationStore:
             raise database_unavailable()
 
     async def create(
-        self, title: str, settings: ChatSettings, messages: Sequence[Message]
+        self,
+        title: str,
+        settings: ChatSettings,
+        messages: Sequence[Message],
+        document: DocumentLink | None = None,
     ) -> Conversation:
         self._check()
+        if document is not None and (
+            self.documents is None or document.id not in self.documents.documents
+        ):
+            raise document_not_found("document.id")
         now = self._now()
         meta = ConversationMeta(
             id=uuid.uuid4(),
@@ -500,6 +511,9 @@ class InMemoryConversationStore:
             message_count=len(messages),
             created_at=now,
             updated_at=now,
+            document_id=None if document is None else document.id,
+            quote=None if document is None else document.quote,
+            context=None if document is None else document.context,
         )
         conversation = Conversation(meta=meta, messages=tuple(messages))
         self.conversations[meta.id] = conversation
@@ -519,6 +533,8 @@ class InMemoryConversationStore:
         items: list[ConversationListItem] = []
         for conversation in found:
             meta = conversation.meta
+            if meta.document_id != query.document:
+                continue
             if query.before is not None and (meta.updated_at, meta.id) >= query.before:
                 continue
             snippet = None
@@ -601,8 +617,8 @@ class InMemoryDocumentStore:
     def _questions(self, did: uuid.UUID) -> int:
         if self.conversations is None:
             return 0
-        return sum(
-            1 for c in self.conversations.conversations.values() if c.meta.document_id == did
+        return len(
+            [c for c in self.conversations.conversations.values() if c.meta.document_id == did]
         )
 
     def _fresh(self, document: Document) -> Document:

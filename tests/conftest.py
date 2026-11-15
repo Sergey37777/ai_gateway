@@ -23,6 +23,7 @@ from tests.fakes import (
     FakeOllama,
     FakeTranscriptionBackend,
     InMemoryConversationStore,
+    InMemoryDocumentStore,
     InMemoryTranscriptionStore,
     fake_encode,
 )
@@ -61,6 +62,7 @@ class GatewayClient(httpx.AsyncClient):
     ollama: FakeOllama
     store: InMemoryTranscriptionStore
     conversations: InMemoryConversationStore
+    documents: InMemoryDocumentStore
     app: FastAPI
 
 
@@ -110,7 +112,9 @@ async def make_client(tmp_path: Path) -> AsyncIterator[MakeClient]:
         factory: Callable[..., FakeTranscriptionBackend] = lambda _spec: fake  # noqa: E731
         manager = ModelManager(registry.whisper_specs(), factory)
         store = InMemoryTranscriptionStore()
-        conversations = InMemoryConversationStore()
+        documents = InMemoryDocumentStore()
+        conversations = InMemoryConversationStore(documents=documents)
+        documents.conversations = conversations
         app = create_app(
             settings,
             registry=registry,
@@ -127,6 +131,7 @@ async def make_client(tmp_path: Path) -> AsyncIterator[MakeClient]:
         client.ollama = fake_ollama
         client.store = store
         client.conversations = conversations
+        client.documents = documents
         client.app = app
         clients.append(client)
         return client

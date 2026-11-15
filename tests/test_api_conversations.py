@@ -117,6 +117,8 @@ async def test_list_and_search(make_client):
         "message_count": 1,
         "created_at": second["created_at"],
         "updated_at": second["updated_at"],
+        "document_id": None,
+        "quote": None,
     }
     found = (await client.get(URL, params={"q": "котик"})).json()["data"]
     snippets = {i["id"]: i.get("snippet") for i in found}
@@ -245,3 +247,71 @@ async def test_chat_completions_not_saved(make_client):
     )
     assert r.status_code == 200
     assert (await client.get(URL)).json()["data"] == []
+
+
+# --- вопросы к документам (этап 6) -----------------------------------------------------
+
+
+async def make_document(client: GatewayClient) -> str:
+    document = await client.documents.create("Спека", "spec.md", "markdown", "# Спека\n\nтекст")
+    return str(document.meta.id)
+
+
+async def test_create_with_document(make_client):
+    client = await make_client()
+    did = await make_document(client)
+    link = {"id": did, "quote": "  FOR UPDATE  ", "context": "# Спека"}
+    body = await create(client, document=link)
+    assert (body["document_id"], body["quote"], body["context"]) == (did, "FOR UPDATE", "# Спека")
+    got = (await client.get(f"{URL}/{body['id']}")).json()
+    assert got["document_id"] == did
+
+
+async def test_plain_conversation_has_null_document(make_client):
+    client = await make_client()
+    body = await create(client)
+    assert (body["document_id"], body["quote"], body["context"]) == (None, None, None)
+
+
+async def test_create_with_missing_document_404(make_client):
+    client = await make_client()
+    link = {"id": str(uuid.uuid4()), "quote": "ц", "context": "к"}
+    r = await client.post(
+        URL, json={"title": "q", "settings": SETTINGS, "messages": [user()], "document": link}
+    )
+    assert r.status_code == 404
+    assert r.json()["error"]["code"] == "document_not_found"
+    assert r.json()["error"]["param"] == "document.id"
+
+
+@pytest.mark.parametrize("quote", ["   ", "ж" * 4001, "a\x00b"])
+async def test_quote_bounds(make_client, quote):
+    client = await make_client()
+    did = await make_document(client)
+    link = {"id": did, "quote": quote, "context": "к"}
+    r = await client.post(
+        URL, json={"title": "q", "settings": SETTINGS, "messages": [user()], "document": link}
+    )
+    assert r.status_code == 400
+    assert r.json()["error"]["param"] == "quote"
+
+
+async def test_list_hides_document_questions_and_filters(make_client):
+    client = await make_client()
+    did = await make_document(client)
+    chat = await create(client, title="Чат")
+    asked = await create(client, title="Вопрос", document={"id": did, "quote": "ц", "context": "к"})
+    plain = (await client.get(URL)).json()["data"]
+    assert [i["id"] for i in plain] == [chat["id"]]
+    assert plain[0]["document_id"] is None
+    by_doc = (await client.get(URL, params={"document": did})).json()["data"]
+    assert [i["id"] for i in by_doc] == [asked["id"]]
+    assert (by_doc[0]["document_id"], by_doc[0]["quote"]) == (did, "ц")
+    assert "context" not in by_doc[0]
+
+
+async def test_list_bad_document_uuid_400(make_client):
+    client = await make_client()
+    r = await client.get(URL, params={"document": "не-uuid"})
+    assert r.status_code == 400
+    assert r.json()["error"]["param"] == "document"

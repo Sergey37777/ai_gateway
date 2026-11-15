@@ -11,13 +11,16 @@ from ai_gateway.api.deps import get_conversations
 from ai_gateway.api.transcriptions import iso
 from ai_gateway.conversations import (
     DEFAULT_LIMIT,
+    MAX_CONTEXT,
     MAX_LIMIT,
+    MAX_QUOTE,
     MAX_TITLE,
     AssistantMessage,
     ChatSettings,
     Conversation,
     ConversationMeta,
     ConversationStore,
+    DocumentLink,
     ImagePart,
     ListItem,
     ListQuery,
@@ -98,10 +101,19 @@ class AssistantMessageIn(_Strict):
 MessageIn = Annotated[UserMessageIn | AssistantMessageIn, Field(discriminator="role")]
 
 
+class DocumentIn(_Strict):
+    """Вопрос к документу (этап 6): документ, выделенный фрагмент, контекст для модели."""
+
+    id: uuid.UUID
+    quote: str
+    context: str
+
+
 class CreateIn(_Strict):
     title: str
     settings: SettingsIn
     messages: list[MessageIn]
+    document: DocumentIn | None = None
 
 
 class PatchIn(_Strict):
@@ -124,6 +136,34 @@ def _title(value: str) -> str:
             param="title",
         )
     return title
+
+
+def _bounded(value: str, limit: int, param: str) -> str:
+    text = value.strip()
+    if not text or len(text) > limit or "\x00" in text:
+        raise GatewayError(
+            400, "invalid_request_error", f"Поле {param} — от 1 до {limit} символов", param=param
+        )
+    return text
+
+
+def _link(item: DocumentIn) -> DocumentLink:
+    return DocumentLink(
+        id=item.id,
+        quote=_bounded(item.quote, MAX_QUOTE, "quote"),
+        context=_bounded(item.context, MAX_CONTEXT, "context"),
+    )
+
+
+def _document_filter(value: str | None) -> uuid.UUID | None:
+    if value is None:
+        return None
+    try:
+        return uuid.UUID(value)
+    except ValueError as exc:
+        raise GatewayError(
+            400, "invalid_request_error", "Некорректный id документа", param="document"
+        ) from exc
 
 
 def _message(item: UserMessageIn | AssistantMessageIn) -> Message:
@@ -179,6 +219,9 @@ def meta_json(meta: ConversationMeta) -> dict[str, object]:
         "message_count": meta.message_count,
         "created_at": iso(meta.created_at),
         "updated_at": iso(meta.updated_at),
+        "document_id": None if meta.document_id is None else str(meta.document_id),
+        "quote": meta.quote,
+        "context": meta.context,
     }
 
 
@@ -198,6 +241,8 @@ def item_json(item: ListItem, *, search: bool) -> dict[str, object]:
         "message_count": meta.message_count,
         "created_at": iso(meta.created_at),
         "updated_at": iso(meta.updated_at),
+        "document_id": None if meta.document_id is None else str(meta.document_id),
+        "quote": meta.quote,
     }
     if search:
         body["snippet"] = item.snippet
@@ -218,7 +263,8 @@ Store = Annotated[ConversationStore, Depends(get_conversations)]
 async def create(body: CreateIn, store: Store) -> dict[str, object]:
     title = _title(body.title)
     messages = [_message(m) for m in body.messages]
-    conversation = await store.create(title, body.settings.to_settings(), messages)
+    link = None if body.document is None else _link(body.document)
+    conversation = await store.create(title, body.settings.to_settings(), messages, link)
     return conversation_json(conversation)
 
 
@@ -228,11 +274,13 @@ async def list_conversations(
     q: str | None = None,
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = DEFAULT_LIMIT,
     before: str | None = None,
+    document: str | None = None,
 ) -> dict[str, object]:
     query = ListQuery(
         q=(q or "").strip() or None,
         limit=limit,
         before=decode_position(before) if before else None,
+        document=_document_filter(document),
     )
     page = await store.list(query)
     return {

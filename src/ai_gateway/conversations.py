@@ -17,9 +17,14 @@ from sqlalchemy import cast as cast_
 from sqlalchemy.dialects.postgresql import REGCONFIG
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from ai_gateway.db.models import ConversationMessageRow, ConversationRow
+from ai_gateway.db.models import ConversationMessageRow, ConversationRow, DocumentRow
 from ai_gateway.db.session import SNIPPET_OPTIONS, session_scope
-from ai_gateway.errors import GatewayError, conversation_conflict, conversation_not_found
+from ai_gateway.errors import (
+    GatewayError,
+    conversation_conflict,
+    conversation_not_found,
+    document_not_found,
+)
 
 ReasoningEffort = Literal["none", "low", "medium", "high"]
 AnswerStatus = Literal["done", "stopped", "error"]
@@ -27,6 +32,9 @@ AnswerStatus = Literal["done", "stopped", "error"]
 MAX_TITLE = 200
 DEFAULT_LIMIT = 30
 MAX_LIMIT = 100
+# вопрос к документу (этап 6): выделенный фрагмент и снимок контекста для модели
+MAX_QUOTE = 4000
+MAX_CONTEXT = 200_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +80,15 @@ Message = UserMessage | AssistantMessage
 
 
 @dataclass(frozen=True, slots=True)
+class DocumentLink:
+    """Привязка вопроса к документу; задаётся при создании и дальше не меняется."""
+
+    id: uuid.UUID
+    quote: str
+    context: str
+
+
+@dataclass(frozen=True, slots=True)
 class ConversationMeta:
     id: uuid.UUID
     title: str
@@ -80,6 +97,10 @@ class ConversationMeta:
     message_count: int
     created_at: datetime
     updated_at: datetime
+    # вопрос к документу; у обычного диалога — None
+    document_id: uuid.UUID | None = None
+    quote: str | None = None
+    context: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +115,8 @@ class ListQuery:
     limit: int = DEFAULT_LIMIT
     # курсор: диалоги строго «старше» (`updated_at`, `id`)
     before: tuple[datetime, uuid.UUID] | None = None
+    # None — только обычные диалоги (вкладка «Чат»); id — вопросы этого документа
+    document: uuid.UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,8 +135,15 @@ class ConversationStore(Protocol):
     """Хранилище диалогов; ошибки соединения с БД — 503 `database_unavailable`."""
 
     async def create(
-        self, title: str, settings: ChatSettings, messages: Sequence[Message]
-    ) -> Conversation: ...
+        self,
+        title: str,
+        settings: ChatSettings,
+        messages: Sequence[Message],
+        document: DocumentLink | None = None,
+    ) -> Conversation:
+        """Нет документа из `document` — 404 `document_not_found`."""
+        ...
+
     async def get(self, cid: uuid.UUID) -> Conversation | None: ...
     async def list(self, query: ListQuery) -> Page: ...
     async def update_meta(
@@ -239,6 +269,9 @@ def _meta(row: ConversationRow, message_count: int) -> ConversationMeta:
         message_count=message_count,
         created_at=row.created_at,
         updated_at=row.updated_at,
+        document_id=row.document_id,
+        quote=row.quote,
+        context=row.context,
     )
 
 
@@ -264,11 +297,32 @@ class SqlConversationStore:
         return count or 0
 
     async def create(
-        self, title: str, settings: ChatSettings, messages: Sequence[Message]
+        self,
+        title: str,
+        settings: ChatSettings,
+        messages: Sequence[Message],
+        document: DocumentLink | None = None,
     ) -> Conversation:
         cid = uuid.uuid4()
         async with self._session() as session:
-            row = ConversationRow(id=cid, title=title, settings=settings_json(settings), revision=0)
+            if document is not None:
+                # FOR SHARE: документ не удалят, пока вставляется вопрос к нему
+                found = await session.scalar(
+                    select(DocumentRow.id)
+                    .where(DocumentRow.id == document.id)
+                    .with_for_update(read=True)
+                )
+                if found is None:
+                    raise document_not_found("document.id")
+            row = ConversationRow(
+                id=cid,
+                title=title,
+                settings=settings_json(settings),
+                revision=0,
+                document_id=None if document is None else document.id,
+                quote=None if document is None else document.quote,
+                context=None if document is None else document.context,
+            )
             session.add(row)
             # диалог вставляется раньше сообщений (внешний ключ)
             await session.flush()
@@ -299,7 +353,11 @@ class SqlConversationStore:
             .where(message.conversation_id == ConversationRow.id)
             .scalar_subquery()
         )
-        statement = select(ConversationRow, count)
+        statement = select(ConversationRow, count).where(
+            ConversationRow.document_id.is_(None)
+            if query.document is None
+            else ConversationRow.document_id == query.document
+        )
         snippet: ColumnElement[str | None] = literal(None)
         if query.q:
             tsquery = func.websearch_to_tsquery(cast_("russian", REGCONFIG), query.q)

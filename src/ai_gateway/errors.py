@@ -74,8 +74,8 @@ def conversation_conflict() -> GatewayError:
     )
 
 
-def document_not_found() -> GatewayError:
-    return GatewayError(404, "document_not_found", "Документ не найден")
+def document_not_found(param: str | None = None) -> GatewayError:
+    return GatewayError(404, "document_not_found", "Документ не найден", param=param)
 
 
 def document_conflict() -> GatewayError:

@@ -13,6 +13,7 @@ from ai_gateway.conversations import (
     AssistantMessage,
     ChatSettings,
     ConversationStore,
+    DocumentLink,
     ImagePart,
     ListQuery,
     SqlConversationStore,
@@ -20,8 +21,9 @@ from ai_gateway.conversations import (
     UserMessage,
 )
 from ai_gateway.db.engine import make_sessions
+from ai_gateway.documents import DocumentStore, SqlDocumentStore
 from ai_gateway.errors import GatewayError
-from tests.fakes import InMemoryConversationStore
+from tests.fakes import InMemoryConversationStore, InMemoryDocumentStore
 
 SETTINGS = ChatSettings(
     model="qwen3-0.6b",
@@ -213,3 +215,65 @@ async def test_replace_tail_atomic(sql_store):
     assert loaded is not None
     assert loaded.meta.revision == 0
     assert loaded.messages == (question(), answer())
+
+
+# --- вопросы к документам (этап 6) -----------------------------------------------------
+
+
+@pytest.fixture(params=["memory", pytest.param("sql", marks=pytest.mark.postgres)])
+def linked(request: pytest.FixtureRequest) -> tuple[ConversationStore, DocumentStore]:
+    if request.param == "memory":
+        documents = InMemoryDocumentStore()
+        conversations = InMemoryConversationStore(documents=documents)
+        documents.conversations = conversations
+        return conversations, documents
+    engine: AsyncEngine = request.getfixturevalue("pg_engine")
+    sessions = make_sessions(engine)
+    return SqlConversationStore(sessions), SqlDocumentStore(sessions)
+
+
+async def test_create_with_document(linked):
+    conversations, documents = linked
+    doc = await documents.create("Спека", "spec.md", "markdown", "# Спека")
+    link = DocumentLink(id=doc.meta.id, quote="FOR UPDATE", context="# Спека")
+    created = await conversations.create("FOR UPDATE", SETTINGS, [question()], document=link)
+    meta = created.meta
+    assert (meta.document_id, meta.quote, meta.context) == (doc.meta.id, "FOR UPDATE", "# Спека")
+    loaded = await conversations.get(meta.id)
+    assert loaded is not None
+    assert loaded.meta == meta
+    got = await documents.get(doc.meta.id)
+    assert got is not None
+    assert got.meta.question_count == 1
+
+
+async def test_create_with_missing_document(linked):
+    conversations, _ = linked
+    link = DocumentLink(id=uuid.uuid4(), quote="ц", context="к")
+    with pytest.raises(GatewayError) as caught:
+        await conversations.create("q", SETTINGS, [question()], document=link)
+    assert (caught.value.status_code, caught.value.code) == (404, "document_not_found")
+
+
+async def test_list_filters_by_document(linked):
+    conversations, documents = linked
+    doc = await documents.create("Спека", "spec.md", "markdown", "текст")
+    chat = await conversations.create("Чат", SETTINGS, [question()])
+    asked = await conversations.create(
+        "Вопрос", SETTINGS, [question()], document=DocumentLink(doc.meta.id, "ц", "к")
+    )
+    plain = await conversations.list(ListQuery())
+    assert [i.meta.id for i in plain.items] == [chat.meta.id]
+    by_doc = await conversations.list(ListQuery(document=doc.meta.id))
+    assert [i.meta.id for i in by_doc.items] == [asked.meta.id]
+    assert by_doc.items[0].meta.quote == "ц"
+
+
+async def test_delete_document_cascades_questions(linked):
+    conversations, documents = linked
+    doc = await documents.create("Спека", "spec.md", "markdown", "текст")
+    asked = await conversations.create(
+        "Вопрос", SETTINGS, [question(), answer()], document=DocumentLink(doc.meta.id, "ц", "к")
+    )
+    assert await documents.delete(doc.meta.id) is True
+    assert await conversations.get(asked.meta.id) is None
