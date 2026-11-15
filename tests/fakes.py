@@ -29,7 +29,21 @@ from ai_gateway.conversations import (
 from ai_gateway.conversations import ListItem as ConversationListItem
 from ai_gateway.conversations import ListQuery as ConversationListQuery
 from ai_gateway.conversations import Page as ConversationPage
-from ai_gateway.errors import conversation_conflict, conversation_not_found, database_unavailable
+from ai_gateway.documents import (
+    Document,
+    DocumentFormat,
+    DocumentListItem,
+    DocumentListQuery,
+    DocumentMeta,
+    DocumentPage,
+)
+from ai_gateway.errors import (
+    conversation_conflict,
+    conversation_not_found,
+    database_unavailable,
+    document_conflict,
+    document_not_found,
+)
 from ai_gateway.registry import WhisperSpec
 from ai_gateway.store import (
     Cursor,
@@ -564,3 +578,114 @@ class InMemoryConversationStore:
     async def delete(self, cid: uuid.UUID) -> bool:
         self._check()
         return self.conversations.pop(cid, None) is not None
+
+
+class InMemoryDocumentStore:
+    """`DocumentStore` в памяти; поиск — подстрока. Вопросы — в связанном хранилище диалогов."""
+
+    def __init__(self) -> None:
+        self.documents: dict[uuid.UUID, Document] = {}
+        # связывается в conftest: question_count и каскадное удаление вопросов
+        self.conversations: InMemoryConversationStore | None = None
+        self.available = True
+        self._tick = 0
+
+    def _now(self) -> datetime:
+        self._tick += 1
+        return datetime(2026, 11, 15, tzinfo=UTC) + timedelta(microseconds=self._tick)
+
+    def _check(self) -> None:
+        if not self.available:
+            raise database_unavailable()
+
+    def _questions(self, did: uuid.UUID) -> int:
+        if self.conversations is None:
+            return 0
+        return sum(
+            1 for c in self.conversations.conversations.values() if c.meta.document_id == did
+        )
+
+    def _fresh(self, document: Document) -> Document:
+        meta = replace(document.meta, question_count=self._questions(document.meta.id))
+        return replace(document, meta=meta)
+
+    async def create(
+        self, title: str, filename: str, format: DocumentFormat, text: str
+    ) -> Document:
+        self._check()
+        now = self._now()
+        meta = DocumentMeta(
+            id=uuid.uuid4(),
+            title=title,
+            filename=filename,
+            format=format,
+            chars=len(text),
+            revision=0,
+            question_count=0,
+            created_at=now,
+            updated_at=now,
+        )
+        document = Document(meta=meta, text=text)
+        self.documents[meta.id] = document
+        return document
+
+    async def get(self, did: uuid.UUID) -> Document | None:
+        self._check()
+        document = self.documents.get(did)
+        return None if document is None else self._fresh(document)
+
+    async def list(self, query: DocumentListQuery) -> DocumentPage:
+        self._check()
+        found = sorted(
+            (self._fresh(d) for d in self.documents.values()),
+            key=lambda d: (d.meta.updated_at, d.meta.id),
+            reverse=True,
+        )
+        items: list[DocumentListItem] = []
+        for document in found:
+            meta = document.meta
+            if query.before is not None and (meta.updated_at, meta.id) >= query.before:
+                continue
+            snippet = None
+            if query.q:
+                needle = query.q.lower()
+                in_text = needle in document.text.lower()
+                if needle not in meta.title.lower() and not in_text:
+                    continue
+                snippet = document.text if in_text else None
+            items.append(DocumentListItem(meta=meta, snippet=snippet))
+        page = items[: query.limit]
+        last = page[-1].meta if len(items) > query.limit else None
+        return DocumentPage(items=page, next=None if last is None else (last.updated_at, last.id))
+
+    async def rename(self, did: uuid.UUID, title: str, filename: str) -> DocumentMeta | None:
+        self._check()
+        document = self.documents.get(did)
+        if document is None:
+            return None
+        meta = replace(document.meta, title=title, filename=filename, updated_at=self._now())
+        self.documents[did] = replace(document, meta=meta)
+        return self._fresh(self.documents[did]).meta
+
+    async def write_text(self, did: uuid.UUID, *, revision: int, text: str) -> DocumentMeta:
+        self._check()
+        document = self.documents.get(did)
+        if document is None:
+            raise document_not_found()
+        if document.meta.revision != revision:
+            raise document_conflict()
+        meta = replace(
+            document.meta, chars=len(text), revision=revision + 1, updated_at=self._now()
+        )
+        self.documents[did] = Document(meta=meta, text=text)
+        return self._fresh(self.documents[did]).meta
+
+    async def delete(self, did: uuid.UUID) -> bool:
+        self._check()
+        if self.documents.pop(did, None) is None:
+            return False
+        if self.conversations is not None:
+            store = self.conversations.conversations
+            for cid in [c for c, v in store.items() if v.meta.document_id == did]:
+                del store[cid]
+        return True
