@@ -307,3 +307,513 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* --- экран «Документы» --------------------------------------------------------------- */
+
+.docs-layout {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+}
+
+.docs-main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.docs-sidebar-toggle {
+  display: none;
+}
+
+.doc-list-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.doc-list-actions .chat-new-button {
+  flex: 1;
+  width: auto;
+}
+
+.doc-list-hint {
+  margin: -4px 4px 0;
+}
+
+.doc-list-drop {
+  outline: 2px dashed var(--signal);
+  outline-offset: 6px;
+  border-radius: var(--r-m);
+}
+
+.doc-upload-errors {
+  margin: 0;
+  padding: 8px 12px 8px 28px;
+  border-radius: var(--r-s);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.docs-empty {
+  padding: 56px 0 32px;
+}
+
+.docs-empty p {
+  margin: 0;
+  max-width: 60ch;
+}
+
+.docs-empty .chat-empty-title {
+  margin-bottom: 8px;
+  font-family: var(--font-display);
+  font-size: clamp(22px, 3.2vw, 30px);
+  font-weight: 500;
+}
+
+/* шапка документа */
+
+.doc-header {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.doc-header-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+}
+
+.doc-header-title .title-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.doc-save {
+  white-space: nowrap;
+}
+
+.doc-header-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.doc-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.doc-modes {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--sheet);
+}
+
+.doc-mode {
+  position: relative;
+  padding: 5px 14px;
+  border-radius: 999px;
+  font-size: 14px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.doc-mode input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.doc-mode-active {
+  background: var(--signal);
+  color: var(--signal-ink);
+}
+
+.doc-mode:has(input:focus-visible) {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+.doc-questions-toggle-on {
+  background: var(--signal-soft);
+  border-color: var(--signal-quiet);
+}
+
+/* рабочая область: колонки зависят от режима и открытой панели вопросов */
+
+.docs-workspace {
+  --docs-pane-height: calc(100vh - 230px);
+  display: grid;
+  gap: 20px;
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.docs-workspace.docs-with-outline {
+  grid-template-columns: 200px minmax(0, 1fr);
+}
+
+.docs-workspace.docs-split {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.docs-workspace.docs-with-questions {
+  grid-template-columns: minmax(0, 1fr) 380px;
+}
+
+.docs-workspace.docs-with-outline.docs-with-questions {
+  grid-template-columns: 200px minmax(0, 1fr) 380px;
+}
+
+.docs-workspace.docs-split.docs-with-questions {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 380px;
+}
+
+.docs-pane {
+  position: relative;
+  min-width: 0;
+  background: var(--sheet);
+  border: 1px solid var(--line);
+  border-radius: var(--r-l);
+}
+
+.docs-preview {
+  padding: 36px clamp(20px, 4vw, 56px) 56px;
+}
+
+/* «Рядом» и «Исходник»: панели одной высоты, каждая со своей прокруткой */
+.docs-split .docs-pane,
+.docs-source.docs-pane {
+  height: var(--docs-pane-height);
+  min-height: 360px;
+  overflow: auto;
+}
+
+.docs-split .docs-preview {
+  padding: 24px 28px 40px;
+}
+
+.docs-source {
+  overflow: hidden;
+}
+
+.doc-editor {
+  height: 100%;
+}
+
+.doc-editor .cm-editor {
+  height: 100%;
+  border-radius: var(--r-l);
+}
+
+.doc-blank {
+  margin: 0;
+}
+
+/* оглавление */
+
+.docs-outline-column {
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+
+.doc-outline-title {
+  margin: 4px 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--graphite);
+}
+
+.doc-outline ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.doc-outline-item {
+  display: block;
+  width: 100%;
+  padding: 4px 10px;
+  border: none;
+  border-left: 2px solid var(--line);
+  border-radius: 0;
+  background: none;
+  color: var(--graphite);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.doc-outline-item:hover {
+  color: var(--ink);
+  background: var(--sheet-2);
+}
+
+.doc-outline-item[aria-current="location"] {
+  color: var(--signal);
+  border-left-color: var(--signal);
+}
+
+.doc-outline-popover {
+  max-height: 50vh;
+  overflow-y: auto;
+  padding: 14px 16px;
+  background: var(--sheet);
+  border: 1px solid var(--line);
+  border-radius: var(--r-m);
+  box-shadow: var(--shadow-float);
+}
+
+/* выделение → «Спросить модель» */
+
+.doc-ask {
+  position: fixed;
+  z-index: 30;
+  padding: 7px 16px;
+  font-size: 14px;
+  box-shadow: var(--shadow-float);
+}
+
+.doc-ask-docked {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+}
+
+.doc-flash {
+  border-radius: 6px;
+  animation: doc-flash 1.6s ease-out;
+}
+
+@keyframes doc-flash {
+  0%,
+  30% {
+    background: var(--signal-soft);
+    box-shadow: 0 0 0 6px var(--signal-soft);
+  }
+
+  100% {
+    background: transparent;
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+
+/* панель вопросов */
+
+.doc-questions {
+  position: sticky;
+  top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  padding: 16px;
+  background: var(--sheet);
+  border: 1px solid var(--line);
+  border-radius: var(--r-l);
+}
+
+.doc-questions-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.doc-questions-head h3 {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.doc-close {
+  padding: 2px 10px;
+}
+
+.doc-questions-empty {
+  margin: 0;
+}
+
+.doc-question-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.doc-question-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 9px 12px;
+  border: none;
+  border-radius: var(--r-s);
+  background: none;
+  color: var(--ink);
+  font-weight: 400;
+  text-align: left;
+}
+
+.doc-question-item:hover {
+  background: var(--sheet-2);
+}
+
+.doc-question-quote {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.doc-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.doc-thread-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.doc-thread-bar .button-quiet-danger {
+  margin-left: auto;
+}
+
+.doc-quote {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  padding: 8px 12px;
+  border: none;
+  border-left: 3px solid var(--signal-quiet);
+  border-radius: 0 var(--r-s) var(--r-s) 0;
+  background: var(--sheet-2);
+  color: var(--graphite);
+  font-weight: 400;
+  font-style: italic;
+  text-align: left;
+}
+
+.doc-quote:hover {
+  color: var(--ink);
+}
+
+.doc-draft {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.doc-draft textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.doc-draft-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+/* в узкой панели сообщения чата компактнее */
+.doc-thread .chat-messages {
+  gap: 16px;
+}
+
+.doc-thread .composer {
+  position: static;
+}
+
+/* узкие экраны */
+
+@media (width < 1280px) {
+  .docs-workspace.docs-with-questions,
+  .docs-workspace.docs-with-outline.docs-with-questions,
+  .docs-workspace.docs-split.docs-with-questions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .docs-workspace.docs-split.docs-with-questions {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  /* панель вопросов — поверх документа справа */
+  .docs-with-questions .doc-questions {
+    position: fixed;
+    inset: 0 0 0 auto;
+    z-index: 25;
+    width: min(420px, 92vw);
+    max-height: none;
+    border-radius: 0;
+    box-shadow: var(--shadow-float);
+  }
+
+  .docs-with-outline.docs-with-questions .docs-outline-column {
+    display: none;
+  }
+}
+
+@media (width < 1000px) {
+  .docs-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .docs-sidebar {
+    display: none;
+  }
+
+  .docs-sidebar.docs-sidebar-open {
+    display: block;
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 20;
+    width: min(320px, 88vw);
+    padding: 20px 16px;
+    overflow-y: auto;
+    background: var(--sheet);
+    box-shadow: var(--shadow-float);
+  }
+
+  .docs-sidebar-toggle {
+    display: inline-flex;
+    align-self: flex-start;
+  }
+
+  .docs-workspace,
+  .docs-workspace.docs-with-outline {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .docs-preview {
+    padding: 22px 18px 36px;
+  }
+
+  .doc-header-actions {
+    margin-left: 0;
+  }
+}

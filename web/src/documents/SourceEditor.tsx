@@ -117,6 +117,7 @@ export function SourceEditor({ value, readOnly, onChange, onSelection, onTopLine
           markdown({ base: markdownLanguage, codeLanguages: languages }),
           syntaxHighlighting(HIGHLIGHT),
           EditorView.lineWrapping,
+          EditorView.contentAttributes.of({ "aria-label": "Исходник документа" }),
           THEME,
           editable.current.of([
             EditorState.readOnly.of(initial.current.readOnly),

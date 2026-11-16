@@ -14,6 +14,7 @@ import { MessageList } from "./MessageList";
 import { fromApiMessages, fromApiSettings, toApiSettings } from "./persist";
 import { buildRequest, type ChatSettings as RequestSettings } from "./request";
 import { EMPTY_SETTINGS, parseMaxTokens, parseTemperature, type SettingsDraft } from "./settings";
+import { readStoredSettings, storeSettings } from "./storedSettings";
 import { useChatSession } from "./useChatSession";
 import { useConversationSaver } from "./useConversationSaver";
 
@@ -41,29 +42,6 @@ type Loading =
   | { kind: "loading" }
   | { kind: "missing" }
   | { kind: "error"; message: string };
-
-const SETTINGS_KEY = "aigw.chat.settings";
-
-/** Последние настройки — удобство одного браузера; хранилище может быть недоступно. */
-function readStoredSettings(): { model: string; draft: SettingsDraft } | null {
-  try {
-    const raw = window.localStorage.getItem(SETTINGS_KEY);
-    if (raw === null) return null;
-    const value: unknown = JSON.parse(raw);
-    const parsed = conversationsApi.parseSettings(value);
-    return parsed === null ? null : fromApiSettings(parsed);
-  } catch {
-    return null;
-  }
-}
-
-function storeSettings(settings: ApiChatSettings): void {
-  try {
-    window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-  } catch {
-    // приватный режим или запрет хранилища — настройки просто не запомнятся
-  }
-}
 
 function hashFor(id: string | null): string {
   return id === null ? "#chat" : conversationHash(id);

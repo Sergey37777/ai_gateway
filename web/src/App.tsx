@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { getApiKey, onUnauthorized, setApiKey } from "./api/apiKey";
 import { fetchConfig } from "./api/config";
 import { userMessage } from "./api/errors";
@@ -8,13 +8,19 @@ import { ErrorBanner } from "./components/ErrorBanner";
 import { ChatScreen } from "./chat/ChatScreen";
 import { HistoryScreen } from "./history/HistoryScreen";
 import { RecordScreen } from "./history/RecordScreen";
-import { conversationHash, parseRoute, recordHash, type Tab } from "./route";
+import { conversationHash, documentHash, parseRoute, recordHash, type Tab } from "./route";
 import { TranscribeScreen } from "./transcribe/TranscribeScreen";
+
+// документы — отдельный чанк: CodeMirror, KaTeX и плагины Markdown грузятся при первом открытии
+const DocumentsScreen = lazy(() =>
+  import("./documents/DocumentsScreen").then((module) => ({ default: module.DocumentsScreen })),
+);
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "transcribe", label: "Распознавание" },
   { id: "history", label: "История" },
   { id: "chat", label: "Чат" },
+  { id: "documents", label: "Документы" },
 ];
 
 type ConfigState =
@@ -30,10 +36,21 @@ export function App() {
   const [recentFiles, setRecentFiles] = useState<ReadonlyMap<string, File>>(() => new Map());
   // null — диалог скрыт; строка — показан с этим сообщением ("" — без сообщения)
   const [keyPrompt, setKeyPrompt] = useState<string | null>(null);
-  const [dirty, setDirty] = useState({ transcribe: false, chat: false });
+  const [dirty, setDirty] = useState({ transcribe: false, chat: false, documents: false });
   // диалог чата живёт, пока открыты другие вкладки: их адрес (#history…) его не закрывает
   const [chatId, setChatId] = useState(route.conversationId);
   if (tab === "chat" && route.conversationId !== chatId) setChatId(route.conversationId);
+  // открытый документ (и вопрос) тоже переживает переход на другие вкладки
+  const [docRoute, setDocRoute] = useState({ id: route.documentId, question: route.questionId });
+  if (
+    tab === "documents" &&
+    (route.documentId !== docRoute.id || route.questionId !== docRoute.question)
+  ) {
+    setDocRoute({ id: route.documentId, question: route.questionId });
+  }
+  // документы монтируются при первом открытии вкладки и дальше живут (как чат)
+  const [documentsMounted, setDocumentsMounted] = useState(tab === "documents");
+  if (tab === "documents" && !documentsMounted) setDocumentsMounted(true);
 
   const load = useCallback(() => {
     fetchConfig().then(
@@ -69,7 +86,7 @@ export function App() {
     [],
   );
 
-  const anyDirty = dirty.transcribe || dirty.chat;
+  const anyDirty = dirty.transcribe || dirty.chat || dirty.documents;
   useEffect(() => {
     if (!anyDirty) return undefined;
     // идёт загрузка файла или есть несохранённый диалог: перезагрузка их потеряет
@@ -89,10 +106,18 @@ export function App() {
     setDirty((d) => (d.chat === value ? d : { ...d, chat: value }));
   }, []);
 
+  const onDocumentsDirty = useCallback((value: boolean) => {
+    setDirty((d) => (d.documents === value ? d : { ...d, documents: value }));
+  }, []);
+
   const selectTab = (id: Tab) => {
     const conversationId = id === "chat" ? chatId : null;
-    setRoute({ tab: id, recordId: null, conversationId, documentId: null, questionId: null });
-    window.location.hash = conversationId === null ? id : conversationHash(conversationId);
+    const documentId = id === "documents" ? docRoute.id : null;
+    const questionId = id === "documents" ? docRoute.question : null;
+    setRoute({ tab: id, recordId: null, conversationId, documentId, questionId });
+    if (conversationId !== null) window.location.hash = conversationHash(conversationId);
+    else if (documentId !== null) window.location.hash = documentHash(documentId, questionId);
+    else window.location.hash = id;
   };
 
   const onCreated = useCallback((job: TranscriptionJob, file: File) => {
@@ -141,7 +166,7 @@ export function App() {
         )}
       </header>
 
-      <main className="app-main">
+      <main className={tab === "documents" ? "app-main app-main-wide" : "app-main"}>
         {configState.status === "loading" && <p className="muted">Загрузка…</p>}
         {configState.status === "error" && (
           <ErrorBanner
@@ -200,6 +225,24 @@ export function App() {
                 conversationId={chatId}
                 visible={tab === "chat"}
               />
+            </section>
+            <section
+              role="tabpanel"
+              id="panel-documents"
+              aria-labelledby="tab-documents"
+              hidden={tab !== "documents"}
+            >
+              {documentsMounted && (
+                <Suspense fallback={<p className="muted">Загрузка…</p>}>
+                  <DocumentsScreen
+                    config={configState.config}
+                    onDirtyChange={onDocumentsDirty}
+                    documentId={docRoute.id}
+                    questionId={docRoute.question}
+                    visible={tab === "documents"}
+                  />
+                </Suspense>
+              )}
             </section>
           </>
         )}
