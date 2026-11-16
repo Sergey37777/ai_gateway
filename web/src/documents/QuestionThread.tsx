@@ -204,25 +204,15 @@ export function QuestionThread({
     <div className="doc-thread">
       <div className="doc-thread-bar">
         <button type="button" className="button-secondary" onClick={onBack}>
-          ← К вопросам
+          ← Вопросы
         </button>
-        {models.length > 1 && (
-          <select
-            aria-label="Модель"
-            value={model}
-            onChange={(event) => {
-              changeModel(event.target.value);
-            }}
-          >
-            {models.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-        )}
-        <button type="button" className="button-secondary button-quiet-danger" onClick={remove}>
-          Удалить вопрос
+        <button
+          type="button"
+          className="button-secondary button-quiet-danger"
+          aria-label="Удалить вопрос"
+          onClick={remove}
+        >
+          Удалить
         </button>
       </div>
 
@@ -269,7 +259,23 @@ export function QuestionThread({
             }}
           />
           <div className="doc-draft-actions">
-            {models.length === 1 && <span className="muted small">{model}</span>}
+            {models.length > 1 ? (
+              <select
+                aria-label="Модель"
+                value={model}
+                onChange={(event) => {
+                  changeModel(event.target.value);
+                }}
+              >
+                {models.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="muted small">{model}</span>
+            )}
             <button type="submit" disabled={question.trim() === "" || models.length === 0}>
               Спросить
             </button>

@@ -630,7 +630,7 @@ export function DocumentsScreen({
             <div
               className={[
                 "docs-workspace",
-                `docs-${effectiveMode}`,
+                `docs-mode-${effectiveMode}`,
                 showOutlineColumn ? "docs-with-outline" : "",
                 questionsOpen ? "docs-with-questions" : "",
               ]

@@ -6,9 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `ai_gateway` — локальный роутер моделей с **OpenAI-совместимым API**. Этапы 1 (шлюз + Whisper),
 2 (Ollama + `/v1/chat/completions`) и 3 (Web UI на React в `web/`) готовы; пословные таймкоды в UI
-(3.1), **этап 4** — фоновые задачи и история распознаваний в PostgreSQL — и **этап 5** — диалоги
-чата в истории. Спецификации — `docs/superpowers/specs/2026-11-04-ai-gateway-stage{1,2,3,4}-design.md`,
-`…-word-timestamps-design.md` и `2026-11-08-ai-gateway-stage5-design.md`; они источник истины по API, форматам ответов, кодам ошибок и тестам.
+(3.1), **этап 4** — фоновые задачи и история распознаваний в PostgreSQL, **этап 5** — диалоги
+чата в истории — и **этап 6** — документы (чтение, правка, вопросы к модели). Спецификации —
+`docs/superpowers/specs/2026-11-04-ai-gateway-stage{1,2,3,4}-design.md`, `…-word-timestamps-design.md`,
+`2026-11-08-ai-gateway-stage5-design.md` и `2026-11-15-ai-gateway-stage6-documents-design.md`; они источник истины по API, форматам ответов, кодам ошибок и тестам.
 Если код расходится со спецификацией — сначала уточнить у пользователя, а не молча менять одно
 под другое.
 
@@ -92,6 +93,18 @@ npm run test:e2e             # Playwright: сборка + реальный шл�
   проверка `revision` → 409). Общее для хранилищ (сессия → 503, курсор) — `db/session.py`.
   В UI: `chat/persist.ts` (`planWrite` — что записать от снимка сохранённого),
   `chat/useConversationSaver.ts` (очередь записей по одной), `ConversationList`/`ConversationHeader`.
+  Стрим ответа поверх reducer'а — `chat/useChatSession.ts` (общий для чата и вопросов к документу).
+- **Этап 6 — документы:** `documents.py` — `DocumentStore` + SQLAlchemy (текст целиком в колонке
+  `text`, запись `write_text` с `revision` → 409 `document_conflict`; в тестах —
+  `InMemoryDocumentStore`, связанный с `InMemoryConversationStore`), роутер `/api/documents…`,
+  лимит `AIGW_MAX_DOCUMENT_MB` (свой у охранника тела). Вопрос к документу — диалог этапа 5 с
+  `document_id`/`quote`/`context` (каскад при удалении документа; без `?document=` список диалогов
+  их не отдаёт). Контекст для модели собирает UI (`documents/context.ts`: весь документ или раздел
+  вокруг выделения в бюджете 24 000 знаков) и хранит снимок в диалоге. UI — `web/src/documents/`
+  (ленивый чанк): `DocumentView` (react-markdown + GFM + KaTeX + Mermaid по требованию +
+  `rehype-sanitize`, смещения исходника `data-src-*`), `SourceEditor` (CodeMirror 6),
+  `useDocumentSaver` (автосохранение), `QuestionPanel`/`QuestionThread`. Не называть файлы, которые
+  отличаются от соседних только регистром (`Outline.tsx` vs `outline.ts`): на Mac это один файл.
 - **`errors.py`** — все ошибки отдаются в формате OpenAI `{"error": {message, type, param, code}}`
   через `GatewayError`; OOM/ошибка загрузки модели → 503 `model_unavailable` + `Retry-After`.
 - Конфигурация: env с префиксом `AIGW_` (`config.py`, pydantic-settings) + реестр моделей
