@@ -209,3 +209,28 @@ test("выделение в превью → «Спросить» → черно
     expect(window.location.hash).toBe("#documents/d1/q-1");
   });
 });
+
+test("после отправки закрытие и открытие панели показывает список, а не старый черновик", async () => {
+  const { fake, stream, user } = setup("#documents/d1", [doc("d1")], []);
+  const preview = await screen.findByTestId("doc-preview");
+  const paragraph = await within(preview).findByText("replace_tail в одной транзакции.");
+  const text = paragraph.firstChild;
+  if (text === null) throw new Error("нет текста");
+  const range = document.createRange();
+  range.setStart(text, 0);
+  range.setEnd(text, "replace_tail".length);
+  window.getSelection()?.removeAllRanges();
+  window.getSelection()?.addRange(range);
+  fireEvent.mouseUp(paragraph);
+  await user.click(await screen.findByRole("button", { name: "Спросить модель" }));
+  const form = await screen.findByRole("form", { name: "Новый вопрос" });
+  await user.click(within(form).getByRole("button", { name: "Спросить" }));
+  await waitFor(() => {
+    expect(fake.api.createConversation).toHaveBeenCalledOnce();
+  });
+  stream.call(0).push({ end: true });
+  await user.click(screen.getByRole("button", { name: "Закрыть вопросы" }));
+  await user.click(screen.getByRole("button", { name: /Вопросы/ }));
+  expect(await screen.findByRole("button", { name: /«replace_tail»/ })).toBeInTheDocument();
+  expect(screen.queryByRole("form", { name: "Новый вопрос" })).toBeNull();
+});

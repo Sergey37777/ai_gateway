@@ -576,6 +576,8 @@ export function DocumentsScreen({
               onToggleQuestions={() => {
                 const next = !questionsOpen;
                 setQuestionsOpen(next);
+                // черновик живёт, пока панель открыта: повторное открытие — список вопросов
+                if (!next) setDraft(null);
                 if (!next && questionId !== null) window.location.hash = documentHash(current.id);
               }}
               onRename={rename}
@@ -686,12 +688,15 @@ export function DocumentsScreen({
                   deps={api}
                   onClose={() => {
                     setQuestionsOpen(false);
+                    setDraft(null);
                     if (questionId !== null) window.location.hash = documentHash(current.id);
                   }}
                   onOpen={(id) => {
                     window.location.hash = documentHash(current.id, id);
                   }}
                   onCreated={(id) => {
+                    // вопрос сохранён: черновик больше не нужен (панель держит открытый вопрос сама)
+                    setDraft(null);
                     window.location.replace(documentHash(current.id, id));
                   }}
                   onCountChange={changeCount}
