@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { expect, test, type Page } from "@playwright/test";
+import { strToU8, zipSync } from "fflate";
 
 const SAMPLE = fileURLToPath(new URL("fixtures/sample.md", import.meta.url));
 
@@ -102,4 +103,30 @@ test("документы: правка из двух вкладок → конф
   await expect(panel.getByText("Документ изменён в другой вкладке")).toHaveCount(0);
   await panel.getByRole("button", { name: "Удалить" }).click();
   await expect(page).toHaveURL(/#documents$/);
+});
+
+test("документы: архив .zip — документ на каждый текстовый файл", async ({ page }) => {
+  const stamp = String(Date.now());
+  const archive = zipSync({
+    [`e2e-${stamp}/readme.md`]: strToU8(`# Архив ${stamp}\n\nИз архива.`),
+    [`e2e-${stamp}/Заметки/итоги.txt`]: strToU8("итоги"),
+    [`e2e-${stamp}/logo.png`]: new Uint8Array([1, 2, 3]),
+  });
+  await page.goto("/#documents");
+  const panel = page.getByRole("tabpanel", { name: "Документы" });
+  await panel.getByLabel("Загрузить файлы").setInputFiles({
+    name: "notes.zip",
+    mimeType: "application/zip",
+    buffer: Buffer.from(archive),
+  });
+  await expect(
+    panel.getByText("Из архива notes.zip: 2 документа, пропущено 1 файл других типов"),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/#documents\/[0-9a-f-]+$/);
+  await expect(panel.getByRole("link", { name: /^Заметки\/итоги/ }).first()).toBeVisible();
+  await panel
+    .getByRole("link", { name: /^readme/ })
+    .first()
+    .click();
+  await expect(panel.getByTestId("doc-preview").getByText("Из архива.")).toBeVisible();
 });

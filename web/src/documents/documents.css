@@ -353,6 +353,14 @@
   border-radius: var(--r-m);
 }
 
+.doc-upload-notes {
+  margin: 0;
+  padding: 8px 12px 8px 28px;
+  border-radius: var(--r-s);
+  background: var(--signal-soft);
+  font-size: 13px;
+}
+
 .doc-upload-errors {
   margin: 0;
   padding: 8px 12px 8px 28px;

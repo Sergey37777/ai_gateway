@@ -24,8 +24,9 @@ function Harness({ list, onUpload }: { list: List; onUpload: (files: File[]) => 
       reloadKey={0}
       onNew={vi.fn<() => void>()}
       onUpload={onUpload}
-      uploading={false}
+      uploading={null}
       uploadErrors={[{ name: "bad.md", message: "Файл не в UTF-8" }]}
+      uploadNotes={[]}
       deps={{ listDocuments: list }}
     />
   );

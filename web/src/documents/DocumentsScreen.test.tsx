@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { strToU8, zipSync } from "fflate";
 import { useEffect, useState } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { parseRoute } from "../route";
@@ -125,6 +126,31 @@ test("загрузка: удачный файл создаётся и откры
   expect(await screen.findByText("bad.md: Файл не в UTF-8")).toBeInTheDocument();
   await waitFor(() => {
     expect(window.location.hash).toBe("#documents/doc-1");
+  });
+});
+
+test("загрузка архива: документ на каждый текстовый файл, итог и ход загрузки", async () => {
+  const { fake, user } = setup("#documents", [], []);
+  const archive = new File(
+    [
+      zipSync({
+        "notes/a.md": strToU8("# A"),
+        "notes/sub/b.txt": strToU8("b"),
+        "notes/pic.png": new Uint8Array([1]),
+      }),
+    ],
+    "notes.zip",
+  );
+  await user.upload(await screen.findByLabelText("Загрузить файлы"), archive);
+  await waitFor(() => {
+    expect(fake.api.createDocument).toHaveBeenCalledTimes(2);
+  });
+  expect(fake.api.createDocument.mock.calls.map(([body]) => body.title)).toEqual(["a", "sub/b"]);
+  expect(
+    await screen.findByText("Из архива notes.zip: 2 документа, пропущено 1 файл других типов"),
+  ).toBeInTheDocument();
+  await waitFor(() => {
+    expect(window.location.hash).toBe("#documents/doc-2");
   });
 });
 

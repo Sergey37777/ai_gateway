@@ -10,7 +10,7 @@ import type { ScreenProps } from "../screen";
 import { AskButton } from "./AskButton";
 import { buildContext } from "./context";
 import { DocumentHeader, type ViewMode } from "./DocumentHeader";
-import { DocumentList } from "./DocumentList";
+import { DocumentList, type UploadProgress } from "./DocumentList";
 import { DocumentView } from "./DocumentView";
 import { questionsLabel } from "./format";
 import { downloadText } from "./download";
@@ -20,7 +20,7 @@ import { QuestionPanel } from "./QuestionPanel";
 import type { Draft } from "./QuestionThread";
 import { findQuote, sourceRange } from "./selection";
 import { SourceEditor, type SourceEditorHandle, type SourceSelection } from "./SourceEditor";
-import { prepareFile } from "./upload";
+import { importFiles, type UploadError } from "./importFiles";
 import { useDocumentSaver } from "./useDocumentSaver";
 
 type Api = typeof documentsApi &
@@ -126,8 +126,9 @@ export function DocumentsScreen({
   const [questionsOpen, setQuestionsOpen] = useState(questionId !== null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [ask, setAsk] = useState<Ask | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadErrors, setUploadErrors] = useState<{ name: string; message: string }[]>([]);
+  const [uploading, setUploading] = useState<UploadProgress | null>(null);
+  const [uploadErrors, setUploadErrors] = useState<UploadError[]>([]);
+  const [uploadNotes, setUploadNotes] = useState<string[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [questionBusy, setQuestionBusy] = useState(false);
@@ -425,31 +426,22 @@ export function DocumentsScreen({
 
   const upload = (files: File[]) => {
     void (async () => {
-      setUploading(true);
+      setUploading({ done: 0, total: 0 });
       setUploadErrors([]);
-      const errors: { name: string; message: string }[] = [];
-      let last: ApiDocument | null = null;
-      for (const file of files) {
-        // по одному: порядок ошибок совпадает с порядком файлов
-        // oxlint-disable-next-line no-await-in-loop
-        const prepared = await prepareFile(file, config.max_document_mb);
-        if (!prepared.ok) {
-          errors.push({ name: prepared.name, message: prepared.message });
-          continue;
-        }
-        try {
-          const { ok: _ok, ...body } = prepared;
-          // oxlint-disable-next-line no-await-in-loop
-          last = await api.createDocument(body);
-        } catch (error) {
-          errors.push({ name: file.name, message: userMessage(error) });
-        }
-      }
-      setUploadErrors(errors);
-      setUploading(false);
-      if (last !== null) {
+      setUploadNotes([]);
+      const result = await importFiles(files, {
+        maxMb: config.max_document_mb,
+        create: api.createDocument,
+        onProgress: (done, total) => {
+          setUploading({ done, total });
+        },
+      });
+      setUploadErrors(result.errors);
+      setUploadNotes(result.notes);
+      setUploading(null);
+      if (result.last !== null) {
         setReloadKey((key) => key + 1);
-        window.location.hash = documentHash(last.id);
+        window.location.hash = documentHash(result.last.id);
       }
     })();
   };
@@ -535,6 +527,7 @@ export function DocumentsScreen({
           onUpload={upload}
           uploading={uploading}
           uploadErrors={uploadErrors}
+          uploadNotes={uploadNotes}
           deps={{ listDocuments: api.listDocuments }}
         />
       </aside>
@@ -572,9 +565,9 @@ export function DocumentsScreen({
           <div className="docs-empty">
             <p className="chat-empty-title">Документы</p>
             <p className="muted">
-              Загрузите .md или .txt (или создайте новый), читайте в красивом превью, правьте рядом
-              с исходником и спрашивайте модель о непонятных местах — выделите текст и нажмите
-              «Спросить модель».
+              Загрузите .md или .txt — по одному или архивом (или создайте новый), читайте в
+              красивом превью, правьте рядом с исходником и спрашивайте модель о непонятных местах —
+              выделите текст и нажмите «Спросить модель».
             </p>
           </div>
         )}

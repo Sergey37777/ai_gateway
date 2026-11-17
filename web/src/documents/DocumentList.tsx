@@ -25,10 +25,18 @@ interface Props {
   reloadKey: number;
   onNew: () => void;
   onUpload: (files: File[]) => void;
-  uploading: boolean;
+  /** Идёт загрузка: сколько документов создано из скольких (`null` — не идёт). */
+  uploading: UploadProgress | null;
   uploadErrors: { name: string; message: string }[];
+  /** Итоги по архивам. */
+  uploadNotes: string[];
   /** Подмена API в тестах. */
   deps?: { listDocuments?: typeof defaultList };
+}
+
+export interface UploadProgress {
+  done: number;
+  total: number;
 }
 
 const SEARCH_DELAY = 300;
@@ -43,6 +51,7 @@ export function DocumentList({
   onUpload,
   uploading,
   uploadErrors,
+  uploadNotes,
   deps,
 }: Props) {
   const list = deps?.listDocuments ?? defaultList;
@@ -144,12 +153,16 @@ export function DocumentList({
         <button
           type="button"
           className="button-secondary"
-          disabled={uploading}
+          disabled={uploading !== null}
           onClick={() => {
             fileRef.current?.click();
           }}
         >
-          {uploading ? "Загрузка…" : "Загрузить"}
+          {uploading === null
+            ? "Загрузить"
+            : uploading.total > 1
+              ? `Загрузка ${String(uploading.done)}/${String(uploading.total)}…`
+              : "Загрузка…"}
         </button>
         <input
           ref={fileRef}
@@ -165,7 +178,16 @@ export function DocumentList({
           }}
         />
       </div>
-      <p className="muted small doc-list-hint">.md, .markdown или .txt — можно перетащить сюда</p>
+      <p className="muted small doc-list-hint">
+        .md, .markdown, .txt или архив .zip, .tar.gz — можно перетащить сюда
+      </p>
+      {uploadNotes.length > 0 && (
+        <ul className="doc-upload-notes" role="status">
+          {uploadNotes.map((note) => (
+            <li key={note}>{note}</li>
+          ))}
+        </ul>
+      )}
       {uploadErrors.length > 0 && (
         <ul className="doc-upload-errors" role="status">
           {uploadErrors.map((e, i) => (

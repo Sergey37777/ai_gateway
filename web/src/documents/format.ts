@@ -20,3 +20,11 @@ export function formatChars(n: number): string {
 export function questionsLabel(n: number): string {
   return `${String(n)} ${plural(n, "вопрос", "вопроса", "вопросов")}`;
 }
+
+export function documentsLabel(n: number): string {
+  return `${String(n)} ${plural(n, "документ", "документа", "документов")}`;
+}
+
+export function filesLabel(n: number): string {
+  return `${String(n)} ${plural(n, "файл", "файла", "файлов")}`;
+}
