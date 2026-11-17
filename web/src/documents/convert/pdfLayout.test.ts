@@ -71,6 +71,13 @@ describe("layoutPdf", () => {
     expect(two).toContain("Journal of X 2026");
   });
 
+  it("page numbers are dropped even in short documents", () => {
+    const { markdown } = layoutPdf([
+      page([item("Единственная страница.", 72, 600), item("1", 300, 30, 8)]),
+    ]);
+    expect(markdown).toBe("Единственная страница.\n");
+  });
+
   it("bullets become list items", () => {
     const { markdown } = layoutPdf([
       page([item("Список:", 72, 700), item("• один", 72, 688), item("• два", 72, 676)]),

@@ -125,12 +125,11 @@ function runningKey(text: string): string {
   return text.replace(/\d+/gu, "#");
 }
 
-/** Повторяющиеся колонтитулы и номера страниц в верхней/нижней полосе. */
+/** Номера страниц и повторяющиеся колонтитулы в верхней/нижней полосе. */
 function dropRunningLines(
   pages: PdfPage[],
   all: Omit<Fragment, "column" | "left">[][],
 ): Omit<Fragment, "column" | "left">[][] {
-  if (pages.length < 3) return all;
   const inBand = (fragment: Omit<Fragment, "column" | "left">) => {
     const height = pages[fragment.page]?.height ?? 0;
     return fragment.y > height * (1 - MARGIN_BAND) || fragment.y < height * MARGIN_BAND;
@@ -142,7 +141,8 @@ function dropRunningLines(
     pagesWith.add(fragment.page);
     seen.set(runningKey(fragment.text), pagesWith);
   }
-  const threshold = Math.ceil(pages.length / 2);
+  // повтор узнаётся от трёх страниц; одиночный номер страницы в полях убирается всегда
+  const threshold = pages.length >= 3 ? Math.ceil(pages.length / 2) : Infinity;
   return all.map((page) =>
     page.filter(
       (fragment) =>
