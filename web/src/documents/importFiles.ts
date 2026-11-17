@@ -7,7 +7,7 @@ import { userMessage } from "../api/errors";
 import type { ApiDocument } from "../api/types";
 import { extractArchive, isArchiveName, MAX_ARCHIVE_MB, titlesFromPaths } from "./archive";
 import { documentsLabel, filesLabel } from "./format";
-import { isTextName, prepareFile, prepareText, type Prepared } from "./upload";
+import { isSupportedName, prepareBytes, prepareFile, type Prepared } from "./upload";
 
 const MB = 1024 * 1024;
 
@@ -58,25 +58,32 @@ async function archiveJobs(
     return null;
   }
   const extracted = extractArchive(new Uint8Array(await file.arrayBuffer()), {
-    accept: isTextName,
-    maxEntryBytes: maxMb * MB,
+    accept: isSupportedName,
+    // размер текста проверит prepareBytes: у PDF/DOCX свой лимит, больше лимита документа
+    maxEntryBytes: MAX_ARCHIVE_MB * MB,
   });
   if (!extracted.ok) {
     errors.push({ name: file.name, message: extracted.message });
     return null;
   }
   for (const path of extracted.oversized) {
-    errors.push({ name: `${file.name} › ${path}`, message: `Файл больше ${String(maxMb)} МБ` });
+    errors.push({
+      name: `${file.name} › ${path}`,
+      message: `Файл больше ${String(MAX_ARCHIVE_MB)} МБ`,
+    });
   }
   if (extracted.entries.length === 0 && extracted.oversized.length === 0) {
-    errors.push({ name: file.name, message: "В архиве нет файлов .md, .markdown или .txt" });
+    errors.push({
+      name: file.name,
+      message: "В архиве нет файлов .md, .markdown, .txt, .pdf или .docx",
+    });
     return null;
   }
   const titles = titlesFromPaths(extracted.entries.map((entry) => entry.path));
   const jobs = extracted.entries.map((entry, index) => ({
     name: `${file.name} › ${entry.path}`,
     archive: file.name,
-    prepare: () => prepareText(basename(entry.path), entry.data, maxMb, titles[index]),
+    prepare: () => prepareBytes(basename(entry.path), entry.data, maxMb, titles[index]),
   }));
   return { jobs, summary: { name: file.name, skipped: extracted.skipped.length, created: 0 } };
 }

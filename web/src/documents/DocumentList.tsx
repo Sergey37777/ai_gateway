@@ -179,7 +179,7 @@ export function DocumentList({
         />
       </div>
       <p className="muted small doc-list-hint">
-        .md, .markdown, .txt или архив .zip, .tar.gz — можно перетащить сюда
+        .md, .txt, .pdf, .docx или архив .zip, .tar.gz — можно перетащить сюда
       </p>
       {uploadNotes.length > 0 && (
         <ul className="doc-upload-notes" role="status">
