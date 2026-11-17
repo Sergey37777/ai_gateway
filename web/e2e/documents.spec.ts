@@ -3,6 +3,8 @@ import { expect, test, type Page } from "@playwright/test";
 import { strToU8, zipSync } from "fflate";
 
 const SAMPLE = fileURLToPath(new URL("fixtures/sample.md", import.meta.url));
+const ARTICLE = fileURLToPath(new URL("fixtures/article.pdf", import.meta.url));
+const NOTES = fileURLToPath(new URL("fixtures/notes.docx", import.meta.url));
 
 async function upload(page: Page) {
   await page.goto("/#documents");
@@ -129,4 +131,25 @@ test("документы: архив .zip — документ на каждый
     .first()
     .click();
   await expect(panel.getByTestId("doc-preview").getByText("Из архива.")).toBeVisible();
+});
+
+test("документы: PDF и DOCX становятся Markdown", async ({ page }) => {
+  await page.goto("/#documents");
+  const panel = page.getByRole("tabpanel", { name: "Документы" });
+  await panel.getByLabel("Загрузить файлы").setInputFiles([ARTICLE, NOTES]);
+  await expect(page).toHaveURL(/#documents\/[0-9a-f-]+$/);
+  // последним открывается DOCX; название PDF — из самого файла, а не из имени
+  await expect(
+    panel.getByTestId("doc-preview").getByRole("heading", { name: "Notes Heading" }),
+  ).toBeVisible();
+  await expect(panel.getByTestId("doc-preview").getByText("Hello from DOCX")).toBeVisible();
+  await panel
+    .getByRole("link", { name: /^Stage Six Article/ })
+    .first()
+    .click();
+  const preview = panel.getByTestId("doc-preview");
+  await expect(preview.getByRole("heading", { name: "Stage Six Article" })).toBeVisible();
+  await expect(
+    preview.getByText("The first paragraph of the article is split across two lines in the PDF."),
+  ).toBeVisible();
 });

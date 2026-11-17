@@ -8,10 +8,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 2 (Ollama + `/v1/chat/completions`) и 3 (Web UI на React в `web/`) готовы; пословные таймкоды в UI
 (3.1), **этап 4** — фоновые задачи и история распознаваний в PostgreSQL, **этап 5** — диалоги
 чата в истории — и **этап 6** — документы (чтение, правка, вопросы к модели); **6.1** — правка
-документа моделью и загрузка архивов. Спецификации —
+документа моделью и загрузка архивов; **6.2** — загрузка PDF и DOCX (конвертация в Markdown). Спецификации —
 `docs/superpowers/specs/2026-11-04-ai-gateway-stage{1,2,3,4}-design.md`, `…-word-timestamps-design.md`,
-`2026-11-08-ai-gateway-stage5-design.md`, `2026-11-15-ai-gateway-stage6-documents-design.md` и
-`2026-11-17-ai-gateway-stage6.1-edits-archives-design.md`; они источник истины по API, форматам ответов, кодам ошибок и тестам.
+`2026-11-08-ai-gateway-stage5-design.md`, `2026-11-15-ai-gateway-stage6-documents-design.md`,
+`2026-11-17-ai-gateway-stage6.1-edits-archives-design.md` и `2026-11-17-ai-gateway-stage6.2-pdf-docx-design.md`; они источник истины по API, форматам ответов, кодам ошибок и тестам.
 Если код расходится со спецификацией — сначала уточнить у пользователя, а не молча менять одно
 под другое.
 
@@ -115,6 +115,13 @@ npm run test:e2e             # Playwright: сборка + реальный шл�
   `MessageList`. «Применить» идёт тем же путём, что ручная правка (`useDocumentSaver`). Архивы
   распаковывает браузер: `documents/archive.ts` (fflate для zip/gzip, свой разбор tar),
   `documents/importFiles.ts` создаёт документы по одному через `POST /api/documents`.
+- **Этап 6.2 — PDF и DOCX (только UI):** при загрузке конвертируются в Markdown, оригинал не
+  хранится (`filename` → `.md`). `documents/convert/` — ленивые чанки: `pdfLayout.ts` (чистая
+  раскладка: колонки по пустой полосе, колонтитулы, абзацы, заголовки по кеглю/жирности),
+  `pdf.ts` (pdf.js + worker из бандла, `fontExtraProperties` ради имён шрифтов), `docx.ts`
+  (mammoth → hast → mdast → GFM; картинки выбрасываются, сноски → GFM). Подготовка любого файла —
+  `prepareBytes` в `upload.ts` (и для архивов); лимит исходника — `MAX_ARCHIVE_MB`. Тесты с pdf.js —
+  `// @vitest-environment node` и legacy-сборка; фикстуры собирает `convert/testFiles.ts`.
 - **`errors.py`** — все ошибки отдаются в формате OpenAI `{"error": {message, type, param, code}}`
   через `GatewayError`; OOM/ошибка загрузки модели → 503 `model_unavailable` + `Retry-After`.
 - Конфигурация: env с префиксом `AIGW_` (`config.py`, pydantic-settings) + реестр моделей

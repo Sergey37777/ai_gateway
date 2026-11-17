@@ -1,0 +1,40 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Times-Roman >>
+endobj
+2 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Times-Bold >>
+endobj
+3 0 obj
+<< /Type /Pages /Kids [5 0 R] /Count 1 >>
+endobj
+4 0 obj
+<< /Length 286 >>
+stream
+BT /F2 18 Tf 72 720 Td (Stage Six Article) Tj ET
+BT /F1 10 Tf 72 690 Td (The first paragraph of the article is split) Tj ET
+BT /F1 10 Tf 72 678 Td (across two lines in the PDF.) Tj ET
+BT /F1 10 Tf 72 650 Td (A second paragraph follows after a gap.) Tj ET
+BT /F1 9 Tf 300 30 Td (1) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 3 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> >>
+endobj
+6 0 obj
+<< /Type /Catalog /Pages 3 0 R >>
+endobj
+xref
+0 7
+0000000000 65535 f 
+0000000009 00000 n 
+0000000081 00000 n 
+0000000152 00000 n 
+0000000209 00000 n 
+0000000546 00000 n 
+0000000682 00000 n 
+trailer
+<< /Size 7 /Root 6 0 R >>
+startxref
+731
+%%EOF
