@@ -33,7 +33,9 @@ function isBoldFont(font: unknown): boolean {
   if (typeof font !== "object" || font === null) return false;
   if ("bold" in font && font.bold === true) return true;
   return (
-    "name" in font && typeof font.name === "string" && /bold|black|heavy|semibold/iu.test(font.name)
+    "name" in font &&
+    typeof font.name === "string" &&
+    /bold|black|heavy|demi|[-,]medi(um)?(ital|italic|oblique)?$/iu.test(font.name)
   );
 }
 
@@ -84,7 +86,12 @@ async function readPage(doc: PdfDocument, number: number): Promise<PdfPage> {
 export async function convertPdf(bytes: Uint8Array, lib?: PdfLib): Promise<Converted> {
   const pdfjs = lib ?? (await loadPdfLib());
   // pdf.js забирает буфер себе — отдаём копию
-  const task = pdfjs.getDocument({ data: bytes.slice(), verbosity: 0 });
+  const task = pdfjs.getDocument({
+    data: bytes.slice(),
+    verbosity: 0,
+    // без этого у шрифтов в commonObjs нет имени — по нему узнаётся жирное начертание
+    fontExtraProperties: true,
+  });
   let doc: PdfDocument;
   try {
     doc = await task.promise;

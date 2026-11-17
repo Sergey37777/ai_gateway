@@ -16,12 +16,18 @@ function escapePdfString(text: string): string {
   return text.replace(/[\\()]/gu, (char) => `\\${char}`);
 }
 
-/** PDF 1.4 со стандартными шрифтами Times (только ASCII), страницы 612×792. */
-export function makePdf(pages: PdfTextSpec[][], info: { title?: string } = {}): Uint8Array {
+/**
+ * PDF 1.4 со стандартными шрифтами Times (только ASCII), страницы 612×792; `boldFont` — имя
+ * жирного шрифта вместо Times-Bold (без встраивания, pdf.js подставит замену).
+ */
+export function makePdf(
+  pages: PdfTextSpec[][],
+  info: { title?: string; boldFont?: string } = {},
+): Uint8Array {
   const objects: string[] = [];
   const add = (body: string) => objects.push(body);
   const regular = add("<< /Type /Font /Subtype /Type1 /BaseFont /Times-Roman >>");
-  const bold = add("<< /Type /Font /Subtype /Type1 /BaseFont /Times-Bold >>");
+  const bold = add(`<< /Type /Font /Subtype /Type1 /BaseFont /${info.boldFont ?? "Times-Bold"} >>`);
   const pagesId = add("");
   const kids: number[] = [];
   for (const items of pages) {

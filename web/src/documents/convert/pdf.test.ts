@@ -39,6 +39,23 @@ describe("convertPdf", () => {
     expect(result.ok && result.title).toBe("Deep Results");
   });
 
+  it("bold by font name: NimbusRomNo9L-Medi", async () => {
+    const bytes = makePdf(
+      [
+        [
+          { text: "Plain paragraph of body text.", x: 72, y: 700, size: 10 },
+          { text: "Medium Heading", x: 72, y: 660, size: 10, bold: true },
+          { text: "More body text after it.", x: 72, y: 640, size: 10 },
+        ],
+      ],
+      { boldFont: "NimbusRomNo9L-Medi" },
+    );
+    const result = await convertPdf(bytes, lib);
+    expect(result.ok && result.markdown).toBe(
+      "Plain paragraph of body text.\n\n# Medium Heading\n\nMore body text after it.\n",
+    );
+  });
+
   it("pdf without text", async () => {
     const result = await convertPdf(makePdf([[], []]), lib);
     expect(result).toEqual({ ok: false, message: "В PDF нет текстового слоя — похоже на скан" });
