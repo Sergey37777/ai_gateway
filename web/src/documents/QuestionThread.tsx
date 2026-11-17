@@ -12,6 +12,7 @@ import { parseMaxTokens, parseTemperature } from "../chat/settings";
 import { readStoredSettings } from "../chat/storedSettings";
 import { useChatSession } from "../chat/useChatSession";
 import { useConversationSaver } from "../chat/useConversationSaver";
+import { EditableAnswer } from "./EditableAnswer";
 import { buildQuestionRequest } from "./request";
 
 export interface QuestionDeps {
@@ -31,7 +32,8 @@ export interface Draft {
 }
 
 interface Props {
-  document: { id: string; title: string };
+  /** `text` — текущий текст документа: по нему проверяются и применяются правки модели. */
+  document: { id: string; title: string; text: string };
   /** Сохранённый вопрос; `null` — новый из черновика. */
   conversationId: string | null;
   draft: Draft | null;
@@ -42,6 +44,10 @@ interface Props {
   onBack: () => void;
   onQuoteClick: (quote: string) => void;
   onBusyChange: (busy: boolean) => void;
+  /** Применить правку модели: новый текст документа и смещение изменённого места. */
+  onApplyEdit: (text: string, at: number) => void;
+  /** `false` — документ сейчас нельзя менять (конфликт). */
+  canEdit: boolean;
 }
 
 const DEFAULT_QUESTION = "Что это значит?";
@@ -75,6 +81,8 @@ export function QuestionThread({
   onBack,
   onQuoteClick,
   onBusyChange,
+  onApplyEdit,
+  canEdit,
 }: Props) {
   const [quote, setQuote] = useState(draft?.quote ?? "");
   const [context, setContext] = useState(draft?.context ?? "");
@@ -304,6 +312,14 @@ export function QuestionThread({
             onRegenerate={() => {
               run({ type: "regenerate" });
             }}
+            renderAssistant={(message) => (
+              <EditableAnswer
+                content={message.content}
+                doc={document.text}
+                canApply={canEdit}
+                onApply={onApplyEdit}
+              />
+            )}
           />
           {status.kind === "error" && (
             <div className="chat-save-error" role="status">

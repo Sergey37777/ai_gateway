@@ -17,6 +17,7 @@ function setup(overrides: Partial<Props> = {}, questions = [question("q1", "d1",
     onCountChange: vi.fn<Props["onCountChange"]>(),
     onQuoteClick: vi.fn<Props["onQuoteClick"]>(),
     onBusyChange: vi.fn<Props["onBusyChange"]>(),
+    onApplyEdit: vi.fn<Props["onApplyEdit"]>(),
   };
   const props: Props = {
     document: { id: "d1", title: "Спека", text: "текст" },
@@ -24,6 +25,7 @@ function setup(overrides: Partial<Props> = {}, questions = [question("q1", "d1",
     questionId: null,
     models: ["gemma4-12b"],
     deps: { ...fake.api, streamChat: stream.streamChat },
+    canEdit: true,
     ...handlers,
     ...overrides,
   };
@@ -93,4 +95,18 @@ test("черновик → отправка: диалог с привязкой,
   await vi.waitFor(() => {
     expect(fake.api.replaceTail).toHaveBeenCalled();
   });
+});
+
+test("ответ с правкой: «Применить» отдаёт новый текст документа", async () => {
+  const user = userEvent.setup();
+  const answer = "Исправил:\n<<<<<<< SEARCH\nтекст\n=======\nновый текст\n>>>>>>> REPLACE";
+  const q = question("q1", "d1", "текст");
+  const assistant = q.messages[1];
+  if (assistant?.role !== "assistant") throw new Error("нет ответа");
+  q.messages = [q.messages[0] ?? assistant, { ...assistant, text: answer }];
+  const { handlers } = setup({ questionId: "q1" }, [q]);
+  const card = await screen.findByRole("group", { name: "Правка документа" });
+  expect(within(card).getByText("новый", { selector: "ins" })).toBeInTheDocument();
+  await user.click(within(card).getByRole("button", { name: "Применить" }));
+  expect(handlers.onApplyEdit).toHaveBeenCalledWith("новый текст", 0);
 });

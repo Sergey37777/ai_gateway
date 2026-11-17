@@ -1,6 +1,12 @@
 import { expect, test } from "vitest";
 import type { ChatMessage } from "../chat/state";
-import { buildQuestionRequest, documentSystemPrompt, questionHistory } from "./request";
+import { parseAnswer } from "./edits";
+import {
+  buildQuestionRequest,
+  documentSystemPrompt,
+  EDIT_INSTRUCTIONS,
+  questionHistory,
+} from "./request";
 
 const SETTINGS = {
   model: "gemma4-12b",
@@ -29,8 +35,16 @@ test("documentSystemPrompt: шаблон и контекст", () => {
   expect(documentSystemPrompt("Спека", "КОНТЕКСТ")).toBe(
     "Ты помогаешь читать документ «Спека». Ниже — его часть. Объясняй простыми словами, " +
       "по-русски, опираясь на документ; если в документе ответа нет — так и скажи и объясни " +
-      "из общих знаний.\n\nКОНТЕКСТ",
+      `из общих знаний.\n\n${EDIT_INSTRUCTIONS}\n\nДокумент:\n\nКОНТЕКСТ`,
   );
+});
+
+test("пример блока в инструкции разбирается как правка", () => {
+  const example = EDIT_INSTRUCTIONS.slice(EDIT_INSTRUCTIONS.indexOf("<<<<<<<"));
+  expect(parseAnswer(example)[0]).toEqual({
+    kind: "edit",
+    edit: { search: "точный фрагмент документа", replace: "новый текст", complete: true },
+  });
 });
 
 test("questionHistory: цитата только в первом вопросе", () => {

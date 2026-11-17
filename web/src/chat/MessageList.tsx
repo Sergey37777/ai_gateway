@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Message } from "./Message";
+import { Message, type RenderAssistant } from "./Message";
 import type { ChatMessage } from "./state";
 
 interface Props {
@@ -7,9 +7,11 @@ interface Props {
   busy: boolean;
   onEdit: (id: number, text: string) => void;
   onRegenerate: () => void;
+  /** Содержимое ответа модели вместо Markdown (правки документа). */
+  renderAssistant?: RenderAssistant;
 }
 
-export function MessageList({ messages, busy, onEdit, onRegenerate }: Props) {
+export function MessageList({ messages, busy, onEdit, onRegenerate, renderAssistant }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
 
   // прокрутка за стримом, если пользователь не ушёл читать выше
@@ -30,6 +32,7 @@ export function MessageList({ messages, busy, onEdit, onRegenerate }: Props) {
           busy={busy}
           onEdit={onEdit}
           onRegenerate={onRegenerate}
+          {...(renderAssistant !== undefined && { renderAssistant })}
         />
       ))}
       <div ref={endRef} />

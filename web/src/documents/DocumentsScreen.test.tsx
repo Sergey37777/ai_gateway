@@ -234,3 +234,38 @@ test("после отправки закрытие и открытие пане�
   expect(await screen.findByRole("button", { name: /«replace_tail»/ })).toBeInTheDocument();
   expect(screen.queryByRole("form", { name: "Новый вопрос" })).toBeNull();
 });
+
+test("правка модели: «Применить» меняет документ и сохраняет его, «Отменить» возвращает", async () => {
+  const q = question("q1", "d1", "replace_tail");
+  const assistant = q.messages[1];
+  if (assistant?.role !== "assistant") throw new Error("нет ответа");
+  const answer = [
+    "Уточнил формулировку:",
+    "<<<<<<< SEARCH",
+    "replace_tail в одной транзакции.",
+    "=======",
+    "replace_tail выполняется в одной транзакции.",
+    ">>>>>>> REPLACE",
+  ].join("\n");
+  q.messages = [q.messages[0] ?? assistant, { ...assistant, text: answer }];
+  const { fake, user } = setup("#documents/d1/q1", [doc("d1")], [q]);
+  const card = await screen.findByRole("group", { name: "Правка документа" });
+  await user.click(within(card).getByRole("button", { name: "Применить" }));
+  const preview = screen.getByTestId("doc-preview");
+  expect(
+    await within(preview).findByText("replace_tail выполняется в одной транзакции."),
+  ).toBeInTheDocument();
+  expect(within(card).getByText("Правка применена")).toBeInTheDocument();
+  act(() => {
+    vi.advanceTimersByTime(1500);
+  });
+  await waitFor(() => {
+    expect(fake.api.writeText).toHaveBeenCalledOnce();
+  });
+  expect(fake.api.writeText.mock.calls[0]?.[1].text).toBe(
+    "# Спека\n\n## Хранилище\n\nreplace_tail выполняется в одной транзакции.\n",
+  );
+  await user.click(within(card).getByRole("button", { name: "Отменить" }));
+  expect(await within(preview).findByText("replace_tail в одной транзакции.")).toBeInTheDocument();
+  expect(within(card).getByRole("button", { name: "Применить" })).toBeInTheDocument();
+});

@@ -759,6 +759,80 @@
   position: static;
 }
 
+/* правки модели (этап 6.1) */
+
+.doc-answer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.doc-edit {
+  border: 1px solid var(--line);
+  border-radius: var(--r-s);
+  background: var(--sheet);
+  overflow: hidden;
+}
+
+.doc-edit-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--sheet-2);
+  font-size: 13px;
+}
+
+.doc-edit-title {
+  flex: 1;
+  min-width: 0;
+  color: var(--graphite);
+}
+
+.doc-edit[data-status="applied"] .doc-edit-title {
+  color: var(--added);
+  font-weight: 600;
+}
+
+.doc-edit[data-status="missing"] .doc-edit-title,
+.doc-edit[data-status="ambiguous"] .doc-edit-title {
+  color: var(--danger);
+}
+
+.doc-edit-diff {
+  max-height: 320px;
+  margin: 0;
+  padding: 10px 12px;
+  overflow: auto;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.doc-edit-diff del {
+  background: var(--danger-soft);
+  color: var(--danger);
+  text-decoration: line-through;
+}
+
+.doc-edit-diff ins {
+  background: var(--added-soft);
+  color: var(--added);
+  text-decoration: none;
+}
+
+.doc-edit[data-status="applied"] .doc-edit-diff del {
+  display: none;
+}
+
+.doc-edit-all {
+  align-self: flex-start;
+}
+
 /* узкие экраны */
 
 @media (width < 1280px) {

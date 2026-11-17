@@ -1,7 +1,10 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { CopyButton } from "../components/CopyButton";
 import { Markdown } from "./Markdown";
 import type { AssistantMessage, ChatMessage, UserMessage } from "./state";
+
+/** Содержимое ответа модели (непустое `content`); по умолчанию — Markdown. */
+export type RenderAssistant = (message: AssistantMessage) => ReactNode;
 
 interface Props {
   message: ChatMessage;
@@ -10,6 +13,7 @@ interface Props {
   busy: boolean;
   onEdit: (id: number, text: string) => void;
   onRegenerate: () => void;
+  renderAssistant?: RenderAssistant;
 }
 
 function UserBubble({
@@ -90,11 +94,13 @@ function AssistantBubble({
   isLast,
   busy,
   onRegenerate,
+  renderAssistant,
 }: {
   message: AssistantMessage;
   isLast: boolean;
   busy: boolean;
   onRegenerate: () => void;
+  renderAssistant: RenderAssistant | undefined;
 }) {
   const streaming = message.status === "streaming";
   return (
@@ -108,7 +114,12 @@ function AssistantBubble({
           <p className="reasoning-text">{message.reasoning}</p>
         </details>
       )}
-      {message.content !== "" && <Markdown text={message.content} />}
+      {message.content !== "" &&
+        (renderAssistant === undefined ? (
+          <Markdown text={message.content} />
+        ) : (
+          renderAssistant(message)
+        ))}
       {streaming && message.content === "" && message.reasoning === "" && (
         <p className="muted typing">Генерация…</p>
       )}
@@ -145,10 +156,16 @@ function AssistantBubble({
   );
 }
 
-export function Message({ message, isLast, busy, onEdit, onRegenerate }: Props) {
+export function Message({ message, isLast, busy, onEdit, onRegenerate, renderAssistant }: Props) {
   return message.role === "user" ? (
     <UserBubble message={message} busy={busy} onEdit={onEdit} />
   ) : (
-    <AssistantBubble message={message} isLast={isLast} busy={busy} onRegenerate={onRegenerate} />
+    <AssistantBubble
+      message={message}
+      isLast={isLast}
+      busy={busy}
+      onRegenerate={onRegenerate}
+      renderAssistant={renderAssistant}
+    />
   );
 }

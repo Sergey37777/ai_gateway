@@ -21,6 +21,9 @@ interface Props {
   onCountChange: (delta: number) => void;
   onQuoteClick: (quote: string) => void;
   onBusyChange: (busy: boolean) => void;
+  /** Применить правку модели к документу (этап 6.1). */
+  onApplyEdit: (text: string, at: number) => void;
+  canEdit: boolean;
 }
 
 interface Open {
@@ -50,6 +53,8 @@ export function QuestionPanel({
   onCountChange,
   onQuoteClick,
   onBusyChange,
+  onApplyEdit,
+  canEdit,
 }: Props) {
   const [open, setOpen] = useState<Open | null>(() =>
     draft !== null ? fromDraft(draft) : questionId !== null ? fromQuestion(questionId) : null,
@@ -145,6 +150,8 @@ export function QuestionPanel({
           onBack={back}
           onQuoteClick={onQuoteClick}
           onBusyChange={onBusyChange}
+          onApplyEdit={onApplyEdit}
+          canEdit={canEdit}
         />
       ) : (
         <>

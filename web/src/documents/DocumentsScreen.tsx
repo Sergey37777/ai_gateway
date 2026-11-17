@@ -53,6 +53,7 @@ interface Ask {
 
 const NEW_TITLE = "Без названия";
 const FLASH_MS = 1600;
+const REVEAL_DELAY_MS = 120;
 
 function modeKey(id: string): string {
   return `aigw.documents.mode.${id}`;
@@ -288,6 +289,18 @@ export function DocumentsScreen({
     saver.edit(value);
   };
 
+  /** Правка модели из панели вопросов: как ручная правка, плюс показать изменённое место. */
+  const applyModelEdit = (value: string, at: number) => {
+    if (conflict) return;
+    edit(value);
+    setNotice(null);
+    // превью перерисуется с отложенным текстом — показать место чуть позже
+    window.setTimeout(() => {
+      if (effectiveMode !== "preview") editorRef.current?.scrollToOffset(at);
+      if (effectiveMode !== "source") scrollPreviewTo(at);
+    }, REVEAL_DELAY_MS);
+  };
+
   const changeMode = (value: ViewMode) => {
     setMode(value);
     setAsk(null);
@@ -339,7 +352,10 @@ export function DocumentsScreen({
     const root = previewRef.current;
     const block = root === null ? null : blockAt(root, offset);
     if (block === null) return false;
-    block.scrollIntoView({ behavior: "smooth", block: "center" });
+    // в jsdom scrollIntoView нет
+    if (typeof block.scrollIntoView === "function") {
+      block.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
     block.classList.add("doc-flash");
     window.setTimeout(() => {
       block.classList.remove("doc-flash");
@@ -702,6 +718,8 @@ export function DocumentsScreen({
                   onCountChange={changeCount}
                   onQuoteClick={showQuote}
                   onBusyChange={setQuestionBusy}
+                  onApplyEdit={applyModelEdit}
+                  canEdit={!conflict}
                 />
               )}
             </div>
