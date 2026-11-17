@@ -56,6 +56,26 @@ describe("convertPdf", () => {
     );
   });
 
+  it("long title is cut to the server limit (200)", async () => {
+    const result = await convertPdf(makePdf(article(), { title: "Long ".repeat(80) }), lib);
+    const title = result.ok ? result.title : null;
+    expect(title).toHaveLength(200);
+    expect(title?.endsWith("…")).toBe(true);
+  });
+
+  it("a pdf that fails to open is destroyed (worker freed)", async () => {
+    const tasks: { destroyed: boolean }[] = [];
+    const spy: PdfLib = {
+      getDocument: (source) => {
+        const task = lib.getDocument(source);
+        tasks.push(task);
+        return task;
+      },
+    };
+    await convertPdf(new TextEncoder().encode("not a pdf"), spy);
+    expect(tasks.map((task) => task.destroyed)).toEqual([true]);
+  });
+
   it("pdf without text", async () => {
     const result = await convertPdf(makePdf([[], []]), lib);
     expect(result).toEqual({ ok: false, message: "В PDF нет текстового слоя — похоже на скан" });

@@ -29,6 +29,14 @@ function metadataTitle(info: unknown): string | null {
   return trimmed.length < 3 || JUNK_TITLE.test(trimmed) ? null : trimmed;
 }
 
+/** Название документа на сервере — до 200 знаков (`MAX_TITLE`). */
+const MAX_TITLE = 200;
+
+function clampTitle(title: string | null): string | null {
+  if (title === null || title.length <= MAX_TITLE) return title;
+  return `${title.slice(0, MAX_TITLE - 1).trimEnd()}…`;
+}
+
 function isBoldFont(font: unknown): boolean {
   if (typeof font !== "object" || font === null) return false;
   if ("bold" in font && font.bold === true) return true;
@@ -96,6 +104,8 @@ export async function convertPdf(bytes: Uint8Array, lib?: PdfLib): Promise<Conve
   try {
     doc = await task.promise;
   } catch (error) {
+    // не открылся — задачу (и worker) всё равно освободить
+    await task.destroy();
     return {
       ok: false,
       message: isPasswordError(error) ? "PDF защищён паролем" : "Не удалось прочитать PDF",
@@ -116,7 +126,7 @@ export async function convertPdf(bytes: Uint8Array, lib?: PdfLib): Promise<Conve
     return {
       ok: true,
       markdown: layout.markdown,
-      title: metadataTitle(metadata?.info) ?? layout.heading,
+      title: clampTitle(metadataTitle(metadata?.info) ?? layout.heading),
     };
   } catch {
     return { ok: false, message: "Не удалось прочитать PDF" };
