@@ -7,9 +7,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 `ai_gateway` — локальный роутер моделей с **OpenAI-совместимым API**. Этапы 1 (шлюз + Whisper),
 2 (Ollama + `/v1/chat/completions`) и 3 (Web UI на React в `web/`) готовы; пословные таймкоды в UI
 (3.1), **этап 4** — фоновые задачи и история распознаваний в PostgreSQL, **этап 5** — диалоги
-чата в истории — и **этап 6** — документы (чтение, правка, вопросы к модели). Спецификации —
+чата в истории — и **этап 6** — документы (чтение, правка, вопросы к модели); **6.1** — правка
+документа моделью и загрузка архивов. Спецификации —
 `docs/superpowers/specs/2026-11-04-ai-gateway-stage{1,2,3,4}-design.md`, `…-word-timestamps-design.md`,
-`2026-11-08-ai-gateway-stage5-design.md` и `2026-11-15-ai-gateway-stage6-documents-design.md`; они источник истины по API, форматам ответов, кодам ошибок и тестам.
+`2026-11-08-ai-gateway-stage5-design.md`, `2026-11-15-ai-gateway-stage6-documents-design.md` и
+`2026-11-17-ai-gateway-stage6.1-edits-archives-design.md`; они источник истины по API, форматам ответов, кодам ошибок и тестам.
 Если код расходится со спецификацией — сначала уточнить у пользователя, а не молча менять одно
 под другое.
 
@@ -105,6 +107,14 @@ npm run test:e2e             # Playwright: сборка + реальный шл�
   `rehype-sanitize`, смещения исходника `data-src-*`), `SourceEditor` (CodeMirror 6),
   `useDocumentSaver` (автосохранение), `QuestionPanel`/`QuestionThread`. Не называть файлы, которые
   отличаются от соседних только регистром (`Outline.tsx` vs `outline.ts`): на Mac это один файл.
+- **Этап 6.1 — правки моделью и архивы (только UI):** модель по просьбе отвечает блоками
+  `<<<<<<< SEARCH / ======= / >>>>>>> REPLACE` (инструкция — `EDIT_INSTRUCTIONS` в
+  `documents/request.ts`); `documents/edits.ts` разбирает ответ, ищет фрагмент (точно, иначе
+  построчно без учёта пробелов), применяет и вычисляет статус по тексту документа (не хранится);
+  `EditableAnswer` рисует карточки с пословной разницей (`diff.ts`) через `renderAssistant` у
+  `MessageList`. «Применить» идёт тем же путём, что ручная правка (`useDocumentSaver`). Архивы
+  распаковывает браузер: `documents/archive.ts` (fflate для zip/gzip, свой разбор tar),
+  `documents/importFiles.ts` создаёт документы по одному через `POST /api/documents`.
 - **`errors.py`** — все ошибки отдаются в формате OpenAI `{"error": {message, type, param, code}}`
   через `GatewayError`; OOM/ошибка загрузки модели → 503 `model_unavailable` + `Retry-After`.
 - Конфигурация: env с префиксом `AIGW_` (`config.py`, pydantic-settings) + реестр моделей
